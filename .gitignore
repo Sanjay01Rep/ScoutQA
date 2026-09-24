@@ -1,0 +1,25 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+build/
+dist/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# ScoutQA runtime data — sessions contain auth cookies; never commit them.
+# (By default these live in %LOCALAPPDATA%\ScoutQA, outside this folder.)
+.scoutqa/
+storage_state*.json
+*.session.json
+
+# Local config may reference private URLs; keep the example tracked instead.
+scoutqa.yaml
+.env
+.env.*
+
+# Outputs
+scoutqa-output/

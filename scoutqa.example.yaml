@@ -1,0 +1,62 @@
+# ScoutQA project configuration. Credentials are referenced by env-var NAME only.
+project: myapp
+base_url: https://myapp.example.com/
+
+scope:
+  allowed_domains: []          # empty = only the base_url host; supports "*.example.com"
+  include: []                  # URL globs; if set, a URL must match one
+  exclude: []                  # URL globs never visited, e.g. "*/admin/*"
+  start_urls: []               # extra entry points
+  max_depth: 3
+  max_pages: 50
+  max_instances_per_pattern: 3 # /items/1, /items/2, /items/3 ... then stop
+  max_duration_s: 600
+  politeness_delay_ms: 0
+  explore_actions: true        # click safe tabs / menus / dialog openers to find in-page states
+  max_actions_per_state: 8
+
+auth:
+  type: none                   # none | form
+  # login_url: https://myapp.example.com/login
+  # username_env: MYAPP_USERNAME
+  # password_env: MYAPP_PASSWORD
+  # profiles:                        # several roles instead of one user (crawl with --role / --all-roles)
+  #   admin:  {username_env: MYAPP_ADMIN_USER,  password_env: MYAPP_ADMIN_PASS}
+  #   viewer: {username_env: MYAPP_VIEWER_USER, password_env: MYAPP_VIEWER_PASS}
+  # username_selector: "#email"      # optional; auto-detected when omitted
+  # password_selector: "#password"
+  # submit_selector: "button[type=submit]"
+  # success:                         # optional; default = no visible password field after login
+  #   url_regex: "/dashboard"
+  #   selector: "[data-testid=user-menu]"
+  # check_url: https://myapp.example.com/dashboard   # protected page used to validate a saved session
+  session_max_age_hours: 12
+
+safety:
+  read_only: true              # block every non-GET request (except during login)
+  allow_mutation_patterns: []  # URL globs allowed to receive POST/PUT/PATCH/DELETE, e.g. "*/api/search*"
+  allow_graphql_queries: true
+  extra_unsafe_keywords: []    # e.g. ["loeschen", "supprimer"]
+  allow_link_patterns: []      # follow these even if they sound unsafe, e.g. "*/archive"
+
+generation:
+  rule_packs: [fields, forms, actions, navigation, tables, dialogs, auth, access, smoke, api]
+  modules: {}                # e.g. {Checkout: ["/cart*", "/checkout*"]}; default = first path segment
+
+template:
+  path: null                   # your .xlsx / .csv / .md / .json template; null = ID, Module, Scenario,
+                               # Preconditions, Steps, Expected Result, Priority
+  sheet: null                  # Excel sheet with the header row (default: first sheet)
+  header_row: null             # 1-based; default: auto-detect
+  layout: auto                 # auto | case_per_row | step_per_row ("Step No" column => one row per step)
+  columns: {}                # override mapping, e.g. {"Objective": title, "Owner": blank}
+  defaults: {}               # fixed values, e.g. {"Environment": "QA", "Release": "R12"}
+
+browser:
+  headless: true
+  block_resources: [image, media, font]
+  navigation_timeout_ms: 30000
+  settle:
+    quiet_ms: 500
+    timeout_ms: 10000
+    lazy_scroll_steps: 5

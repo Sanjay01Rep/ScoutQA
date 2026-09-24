@@ -1,0 +1,79 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>ScoutQA</title>
+  <link rel="stylesheet" href="sidepanel.css">
+</head>
+<body>
+  <header>
+    <h1>ScoutQA</h1>
+    <span id="conn" class="pill off">not connected</span>
+  </header>
+
+  <section id="pair-section">
+    <h2>1 · Connect</h2>
+    <p class="hint">Run <code>scoutqa serve</code> and enter the pairing code it prints.</p>
+    <label>Service port <input id="port" type="number" min="1" max="65535" value="8765"></label>
+    <label>Pairing code <input id="code" placeholder="ABCD-EFGH" autocomplete="off" spellcheck="false"></label>
+    <button id="pair">Pair</button>
+  </section>
+
+  <section id="project-section" hidden>
+    <h2>2 · Record</h2>
+    <p><strong id="project-name"></strong> <span id="project-url" class="muted"></span></p>
+    <label>Role <select id="role"></select></label>
+    <p class="hint">Sign in and use the app normally. ScoutQA captures pages, clicks, API responses and the
+      <em>format</em> of what you type — never the values, never passwords.</p>
+    <div class="row">
+      <button id="start">Start recording</button>
+      <button id="stop" class="secondary" hidden>Stop</button>
+    </div>
+    <dl id="stats" class="stats">
+      <dt>Pages / states</dt><dd id="s-captures">0</dd>
+      <dt>New states</dt><dd id="s-states">0</dd>
+      <dt>API calls</dt><dd id="s-api">0</dd>
+      <dt>Field formats</dt><dd id="s-shapes">0</dd>
+    </dl>
+  </section>
+
+  <section id="crawl-section" hidden>
+    <h2>Or · Crawl automatically</h2>
+    <p class="hint">Sign in to the app first. ScoutQA then explores it in a separate window using your session,
+      <strong>read-only</strong>: data-changing requests are blocked by the browser, confirmations are cancelled,
+      and delete / pay / logout links are never followed.</p>
+    <div class="row">
+      <button id="crawl-start">Crawl (read-only)</button>
+      <button id="crawl-stop" class="secondary" hidden>Stop crawl</button>
+    </div>
+    <dl class="stats">
+      <dt>Pages visited</dt><dd id="c-pages">0</dd>
+      <dt>Waiting in queue</dt><dd id="c-pending">0</dd>
+      <dt>Safe controls clicked</dt><dd id="c-clicks">0</dd>
+      <dt>Requests blocked</dt><dd id="c-blocked">0</dd>
+      <dt>Dialogs cancelled</dt><dd id="c-dialogs">0</dd>
+    </dl>
+    <p id="crawl-info" class="muted"></p>
+  </section>
+
+  <section id="cases-section" hidden>
+    <h2>3 · Test cases</h2>
+    <div class="row">
+      <button id="generate">Generate</button>
+      <select id="format"><option value="xlsx">Excel</option><option value="csv">CSV</option>
+        <option value="md">Markdown</option><option value="json">JSON</option></select>
+      <button id="export" class="secondary">Export</button>
+    </div>
+    <p id="cases-info" class="muted"></p>
+  </section>
+
+  <section id="gaps-section" hidden>
+    <h2>Record next</h2>
+    <p class="hint">Pages linked from what you recorded, but not captured yet for this role.</p>
+    <ul id="gaps"></ul>
+  </section>
+
+  <p id="message" role="status"></p>
+  <script type="module" src="sidepanel.js"></script>
+</body>
+</html>

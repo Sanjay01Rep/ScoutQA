@@ -1,0 +1,16 @@
+{
+  "manifest_version": 3,
+  "name": "ScoutQA Recorder",
+  "version": "0.1.0",
+  "description": "Record how you use a web app; the local ScoutQA service turns it into test cases.",
+  "minimum_chrome_version": "116",
+  "permissions": ["storage", "scripting", "sidePanel", "tabs", "declarativeNetRequest"],
+  "host_permissions": ["http://127.0.0.1/*", "http://localhost/*"],
+  "optional_host_permissions": ["http://*/*", "https://*/*"],
+  "background": { "service_worker": "background.js", "type": "module" },
+  "side_panel": { "default_path": "sidepanel.html" },
+  "action": { "default_title": "ScoutQA Recorder" },
+  "content_security_policy": {
+    "extension_pages": "script-src 'self'; object-src 'none'; connect-src http://127.0.0.1:* http://localhost:*"
+  }
+}

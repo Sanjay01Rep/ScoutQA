@@ -1,0 +1,78 @@
+"""The commented `scoutqa.yaml` written by `scoutqa init` (also shipped as scoutqa.example.yaml)."""
+
+from __future__ import annotations
+
+import re
+from urllib.parse import urlsplit
+
+_TEMPLATE = """\
+# ScoutQA project configuration. Credentials are referenced by env-var NAME only.
+project: {project}
+base_url: {base_url}
+
+scope:
+  allowed_domains: []          # empty = only the base_url host; supports "*.example.com"
+  include: []                  # URL globs; if set, a URL must match one
+  exclude: []                  # URL globs never visited, e.g. "*/admin/*"
+  start_urls: []               # extra entry points
+  max_depth: 3
+  max_pages: 50
+  max_instances_per_pattern: 3 # /items/1, /items/2, /items/3 ... then stop
+  max_duration_s: 600
+  politeness_delay_ms: 0
+  explore_actions: true        # click safe tabs / menus / dialog openers to find in-page states
+  max_actions_per_state: 8
+
+auth:
+  type: none                   # none | form
+  # login_url: {site_root}login
+  # username_env: {env_prefix}_USERNAME
+  # password_env: {env_prefix}_PASSWORD
+  # profiles:                        # several roles instead of one user (crawl with --role / --all-roles)
+  #   admin:  {{username_env: {env_prefix}_ADMIN_USER,  password_env: {env_prefix}_ADMIN_PASS}}
+  #   viewer: {{username_env: {env_prefix}_VIEWER_USER, password_env: {env_prefix}_VIEWER_PASS}}
+  # username_selector: "#email"      # optional; auto-detected when omitted
+  # password_selector: "#password"
+  # submit_selector: "button[type=submit]"
+  # success:                         # optional; default = no visible password field after login
+  #   url_regex: "/dashboard"
+  #   selector: "[data-testid=user-menu]"
+  # check_url: {site_root}dashboard   # protected page used to validate a saved session
+  session_max_age_hours: 12
+
+safety:
+  read_only: true              # block every non-GET request (except during login)
+  allow_mutation_patterns: []  # URL globs allowed to receive POST/PUT/PATCH/DELETE, e.g. "*/api/search*"
+  allow_graphql_queries: true
+  extra_unsafe_keywords: []    # e.g. ["loeschen", "supprimer"]
+  allow_link_patterns: []      # follow these even if they sound unsafe, e.g. "*/archive"
+
+generation:
+  rule_packs: [fields, forms, actions, navigation, tables, dialogs, auth, access, smoke, api]
+  modules: {{}}                # e.g. {{Checkout: ["/cart*", "/checkout*"]}}; default = first path segment
+
+template:
+  path: null                   # your .xlsx / .csv / .md / .json template; null = ID, Module, Scenario,
+                               # Preconditions, Steps, Expected Result, Priority
+  sheet: null                  # Excel sheet with the header row (default: first sheet)
+  header_row: null             # 1-based; default: auto-detect
+  layout: auto                 # auto | case_per_row | step_per_row ("Step No" column => one row per step)
+  columns: {{}}                # override mapping, e.g. {{"Objective": title, "Owner": blank}}
+  defaults: {{}}               # fixed values, e.g. {{"Environment": "QA", "Release": "R12"}}
+
+browser:
+  headless: true
+  block_resources: [image, media, font]
+  navigation_timeout_ms: 30000
+  settle:
+    quiet_ms: 500
+    timeout_ms: 10000
+    lazy_scroll_steps: 5
+"""
+
+
+def example_yaml(project: str = "myapp", base_url: str = "https://myapp.example.com/") -> str:
+    parts = urlsplit(base_url)
+    site_root = f"{parts.scheme}://{parts.netloc}/" if parts.scheme and parts.netloc else base_url
+    env_prefix = re.sub(r"[^A-Za-z0-9]+", "_", project).strip("_").upper() or "APP"
+    return _TEMPLATE.format(project=project, base_url=base_url, site_root=site_root, env_prefix=env_prefix)

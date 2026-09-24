@@ -1,0 +1,65 @@
+[build-system]
+requires = ["hatchling>=1.24"]
+build-backend = "hatchling.build"
+
+[project]
+name = "scoutqa"
+version = "0.1.0"
+description = "Crawl a web app and generate test scenarios and manual test cases in your template."
+readme = "README.md"
+requires-python = ">=3.11"
+dependencies = [
+    "openpyxl>=3.1",
+    "playwright>=1.49",
+    "pydantic>=2.7",
+    "pyyaml>=6.0",
+    "typer>=0.12",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8",
+    "pytest-asyncio>=0.24",
+    "ruff>=0.6",
+    "mypy>=1.11",
+    "types-PyYAML",
+    "types-openpyxl",
+]
+
+[project.scripts]
+scoutqa = "scoutqa.cli:app"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/scoutqa"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+asyncio_mode = "auto"
+asyncio_default_fixture_loop_scope = "function"
+markers = [
+    "browser: needs a real Chromium (Playwright)",
+]
+
+[tool.ruff]
+line-length = 120
+target-version = "py311"
+src = ["src", "tests"]
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "B", "UP", "SIM", "RUF"]
+ignore = [
+    "SIM105",  # explicit try/except/pass reads better around awaits
+    "SIM905",  # "a b c".split() is the clearest way to write long word lists
+]
+
+[tool.ruff.lint.per-file-ignores]
+# Modules that embed in-page JavaScript / HTML as string literals.
+"src/scoutqa/crawl/auth.py" = ["E501"]
+"src/scoutqa/crawl/discover.py" = ["E501"]
+"tests/fixture_app/server.py" = ["E501"]
+
+[tool.mypy]
+python_version = "3.11"
+strict = true
+mypy_path = "src"
+packages = ["scoutqa"]
