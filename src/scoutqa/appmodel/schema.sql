@@ -123,3 +123,34 @@ CREATE TABLE IF NOT EXISTS cases (
     spec       TEXT NOT NULL,              -- TestCase JSON
     updated_at TEXT NOT NULL
 );
+
+-- LLM response cache (M7): keyed by a hash of provider + model + messages + output schema, so an
+-- unchanged prompt costs 0 tokens on a re-run. Never stores prompts/keys in plain sight beyond what the
+-- provider itself received; values are the raw JSON text the model returned.
+CREATE TABLE IF NOT EXISTS llm_cache (
+    key        TEXT PRIMARY KEY,
+    provider   TEXT NOT NULL,
+    model      TEXT NOT NULL,
+    stage      TEXT NOT NULL,
+    text       TEXT NOT NULL,              -- raw model output (validated JSON text)
+    usage      TEXT NOT NULL,              -- JSON: {input_tokens, output_tokens, cached_input_tokens}
+    created_at TEXT NOT NULL
+);
+
+-- LLM usage ledger (M7): one row per call that actually reached a provider (cache hits are not billed
+-- and are not recorded here). Backs `scoutqa usage` and the run-level budget check.
+CREATE TABLE IF NOT EXISTS llm_usage (
+    id                 INTEGER PRIMARY KEY AUTOINCREMENT,
+    run_id             TEXT,
+    stage              TEXT NOT NULL,
+    provider           TEXT NOT NULL,
+    model              TEXT NOT NULL,
+    input_tokens       INTEGER NOT NULL,
+    output_tokens      INTEGER NOT NULL,
+    cached_input_tokens INTEGER NOT NULL DEFAULT 0,
+    cost_usd           REAL,
+    latency_s          REAL NOT NULL,
+    attempts           INTEGER NOT NULL DEFAULT 1,
+    created_at         TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS llm_usage_stage ON llm_usage (stage, created_at);

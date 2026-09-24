@@ -247,5 +247,77 @@ def map_(
     console.print(f"\n[dim]{result.states} states, ~{result.approx_tokens} tokens[/dim]")
 
 
+@app.command()
+def models(
+    config: ConfigOpt = Path(DEFAULT_CONFIG_NAME),
+    test: Annotated[bool, typer.Option("--test", help="Send a trivial live request to check it works")] = False,
+    stage: Annotated[str, typer.Option(help="Generation stage to test (default: llm.default_profile)")] = "smoke",
+    verbose: VerboseOpt = False,
+) -> None:
+    """List configured model profiles and routing, or (--test) send one real request to check a profile."""
+    setup_logging(verbose)
+    try:
+        cfg = load_config(config)
+        if not test:
+            _print_profiles(cfg)
+            return
+        report = asyncio.run(pipeline.test_model(cfg, stage=stage))
+    except ScoutQAError as exc:
+        raise _fail(exc) from None
+    console.print(f"[bold]{report.provider}/{report.model}[/bold] (stage '{report.stage}', profile "
+                  f"'{report.profile}'){' [dim](cached)[/dim]' if report.cached else ''}")
+    console.print(f"  Reply: {report.reply}")
+    cost = f"${report.cost_usd:.5f}" if report.cost_usd is not None else "unknown (no price on file)"
+    console.print(f"  {report.input_tokens} in ({report.cached_input_tokens} cached) + {report.output_tokens} "
+                  f"out · {cost} · {report.latency_s:.1f}s")
+
+
+def _print_profiles(cfg: ProjectConfig) -> None:
+    if not cfg.llm.profiles:
+        console.print("No model profiles configured. Add one under [bold]llm.profiles[/bold] in "
+                      f"{DEFAULT_CONFIG_NAME} — see scoutqa.example.yaml.")
+        return
+    table = Table(title="Model profiles")
+    for column in ("Profile", "Provider", "Model", "Stages routed here"):
+        table.add_column(column)
+    stages_by_profile: dict[str, list[str]] = {}
+    for stage_name, profile_name in cfg.llm.routing.items():
+        stages_by_profile.setdefault(profile_name, []).append(stage_name)
+    for name, profile in cfg.llm.profiles.items():
+        stages = list(stages_by_profile.get(name, []))
+        if name == cfg.llm.default_profile:
+            stages.insert(0, "(default)")
+        table.add_row(name, profile.provider, profile.model, ", ".join(stages) or "—")
+    console.print(table)
+    if cfg.llm.default_profile is None and not cfg.llm.routing:
+        console.print("[yellow]No stage is routed yet[/yellow] — set llm.default_profile in scoutqa.yaml.")
+
+
+@app.command()
+def usage(
+    config: ConfigOpt = Path(DEFAULT_CONFIG_NAME),
+) -> None:
+    """Show LLM tokens and estimated cost spent on this project so far."""
+    try:
+        cfg = load_config(config)
+        report = pipeline.usage_report(cfg)
+    except ScoutQAError as exc:
+        raise _fail(exc) from None
+    if not report.rows:
+        console.print(f"No LLM calls recorded yet for [bold]{cfg.project}[/bold].")
+        return
+    table = Table(title=f"LLM usage — {cfg.project}")
+    for column in ("Stage", "Provider", "Model", "Calls", "Input", "Cached", "Output", "Cost"):
+        table.add_column(column, justify="right" if column not in ("Stage", "Provider", "Model") else "left")
+    for row in report.rows:
+        table.add_row(row.stage, row.provider, row.model, str(row.calls), f"{row.input_tokens:,}",
+                      f"{row.cached_input_tokens:,}", f"{row.output_tokens:,}",
+                      f"${row.cost_usd:.4f}" if row.cost_usd is not None else "—")
+    console.print(table)
+    total_cost = f"${report.total_cost_usd:.4f}" if report.total_cost_usd is not None else "unknown"
+    console.print(f"Total: {report.total_input_tokens:,} in + {report.total_output_tokens:,} out · {total_cost}")
+    console.print(f"[dim]{report.cache_entries} response(s) cached (free on their next exact re-use)[/dim]")
+
+
 if __name__ == "__main__":
     app()

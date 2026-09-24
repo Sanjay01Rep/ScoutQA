@@ -205,6 +205,110 @@ class TemplateConfig(_Strict):
     defaults: dict[str, str] = Field(default_factory=dict, description="Fixed value per column, e.g. {Env: QA}")
 
 
+ModelProvider = Literal["anthropic", "openai", "azure_openai", "gemini", "fake"]
+JsonMode = Literal["schema", "object", "none"]
+_PROFILE_ID = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_-]{0,63}$")
+
+
+class ModelProfile(_Strict):
+    """One callable model: a provider, a model/deployment name, and how to reach it."""
+
+    provider: ModelProvider
+    model: str = Field(description="Model name (or, for azure_openai, the deployment name).")
+    api_key_env: str | None = Field(
+        default=None, description="Name of the env var holding the API key. Optional only for 'openai' "
+                                  "profiles with a base_url pointing at a keyless local server."
+    )
+    base_url: str | None = Field(
+        default=None, description="'openai' provider only: any OpenAI-compatible endpoint "
+                                  "(Ollama, vLLM, LM Studio, Groq, DeepSeek, Together, OpenRouter, ...)."
+    )
+    azure_endpoint: str | None = Field(default=None, description="'azure_openai' provider only.")
+    azure_api_version: str = "2026-01-01-preview"
+    json_mode: JsonMode = Field(
+        default="schema", description="'openai'/'azure_openai' only: how strictly to enforce the output "
+                                      "shape. Use 'object' or 'none' for servers with partial support."
+    )
+    temperature: float = Field(default=0.2, ge=0, le=2)
+    max_output_tokens: int = Field(default=4096, gt=0, le=1_000_000)
+    extra_headers: dict[str, str] = Field(default_factory=dict)
+
+    @field_validator("api_key_env")
+    @classmethod
+    def _env_name(cls, v: str | None) -> str | None:
+        return _check_env_name(v)
+
+    @model_validator(mode="after")
+    def _requirements(self) -> ModelProfile:
+        if self.provider == "azure_openai" and not self.azure_endpoint:
+            raise ValueError("provider 'azure_openai' requires azure_endpoint")
+        if self.provider != "azure_openai" and self.azure_endpoint:
+            raise ValueError("azure_endpoint is only used by provider 'azure_openai'")
+        if self.provider in ("anthropic", "gemini", "azure_openai") and not self.api_key_env:
+            raise ValueError(f"provider {self.provider!r} requires api_key_env")
+        if self.provider == "openai" and not self.api_key_env and not self.base_url:
+            raise ValueError("provider 'openai' without a base_url talks to api.openai.com and needs api_key_env "
+                             "(set base_url for a keyless local server, e.g. Ollama/vLLM)")
+        if self.provider != "openai" and self.base_url:
+            raise ValueError("base_url is only used by provider 'openai' "
+                             "(it is how any OpenAI-compatible endpoint is reached)")
+        if self.provider not in ("openai", "azure_openai") and self.json_mode != "schema":
+            raise ValueError("json_mode only applies to provider 'openai' / 'azure_openai'")
+        return self
+
+
+class ModelConfig(_Strict):
+    """LLM setup: which providers/models are available and which stage uses which (docs/ARCHITECTURE.md §3.11)."""
+
+    profiles: dict[str, ModelProfile] = Field(default_factory=dict)
+    default_profile: str | None = Field(default=None, description="Profile used by any stage not in `routing`.")
+    routing: dict[str, str] = Field(
+        default_factory=dict, description="Generation stage -> profile name, e.g. {scenarios: cheap, expand: strong}."
+    )
+    cache: bool = Field(default=True, description="Reuse a previous response for an identical call (0 tokens).")
+    max_retries: int = Field(default=3, ge=0, le=10, description="Retries on a transport failure (network/429/5xx).")
+    max_repair_attempts: int = Field(
+        default=2, ge=0, le=5, description="Extra attempts after invalid JSON / schema-validation failure."
+    )
+    concurrency: int = Field(default=4, ge=1, le=32, description="Calls in flight at once, across all stages.")
+    budget_usd: float | None = Field(default=None, gt=0, description="Stop once estimated spend reaches this.")
+    budget_tokens: int | None = Field(default=None, gt=0, description="Stop once input+output tokens reach this.")
+    pricing: dict[str, tuple[float, float, float]] = Field(
+        default_factory=dict,
+        description="Override/add prices: 'provider:model' -> [input, cached_input, output] USD per 1M tokens.",
+    )
+
+    @field_validator("profiles")
+    @classmethod
+    def _profile_names(cls, v: dict[str, ModelProfile]) -> dict[str, ModelProfile]:
+        for name in v:
+            if not _PROFILE_ID.match(name):
+                raise ValueError(f"invalid model profile name {name!r} (letters, digits, - and _)")
+        return v
+
+    @model_validator(mode="after")
+    def _routes_resolve(self) -> ModelConfig:
+        names = {n for n in (self.default_profile, *self.routing.values()) if n is not None}
+        missing = names - set(self.profiles)
+        if missing:
+            raise ValueError(
+                f"llm.routing/default_profile refers to undefined profile(s): {', '.join(sorted(missing))}"
+            )
+        return self
+
+    def profile_name_for(self, stage: str) -> str:
+        name = self.routing.get(stage, self.default_profile)
+        if name is None:
+            raise ValueError(
+                f"No model configured for stage {stage!r}. Set llm.default_profile or llm.routing.{stage} "
+                f"in scoutqa.yaml (profiles defined: {', '.join(self.profiles) or 'none'})."
+            )
+        return name
+
+    def profile_for(self, stage: str) -> ModelProfile:
+        return self.profiles[self.profile_name_for(stage)]
+
+
 class ProjectConfig(_Strict):
     project: str = Field(pattern=r"^[A-Za-z0-9][A-Za-z0-9_.-]{0,63}$")
     base_url: str
@@ -214,6 +318,7 @@ class ProjectConfig(_Strict):
     browser: BrowserConfig = Field(default_factory=BrowserConfig)
     generation: GenerationConfig = Field(default_factory=GenerationConfig)
     template: TemplateConfig = Field(default_factory=TemplateConfig)
+    llm: ModelConfig = Field(default_factory=ModelConfig)
 
     @field_validator("base_url")
     @classmethod

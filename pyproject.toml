@@ -17,6 +17,13 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
+# Each provider's SDK is optional and imported lazily (src/scoutqa/llm/providers/), so installing ScoutQA
+# never pulls in a model SDK you don't use. "openai" also covers any OpenAI-compatible endpoint (Ollama,
+# vLLM, LM Studio, Groq, DeepSeek, Together, OpenRouter, Mistral, xAI, ...) and Azure OpenAI.
+anthropic = ["anthropic>=0.40"]
+openai = ["openai>=1.50"]
+gemini = ["google-genai>=0.3"]
+all = ["anthropic>=0.40", "openai>=1.50", "google-genai>=0.3"]
 dev = [
     "pytest>=8",
     "pytest-asyncio>=0.24",
@@ -24,6 +31,9 @@ dev = [
     "mypy>=1.11",
     "types-PyYAML",
     "types-openpyxl",
+    "anthropic>=0.40",
+    "openai>=1.50",
+    "google-genai>=0.3",
 ]
 
 [project.scripts]

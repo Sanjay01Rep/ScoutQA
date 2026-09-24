@@ -244,30 +244,55 @@ Prompt layout is ordered for provider prompt caching: **[system rules + output s
   origin, assumptions).
 - CSV (UTF-8 BOM for Excel), Markdown, JSON (lossless canonical).
 
-### 3.11 Model Adapter (`llm/`)
+### 3.11 Model Adapter (`llm/`) ✅ implemented M7
 ```python
-class ModelClient(Protocol):
-    async def generate(self, req: GenerationRequest, output: type[T]) -> Generation[T]: ...
+class ModelClient:                          # src/scoutqa/llm/base.py — one per provider, in llm/providers/
+    async def complete(self, messages: list[Message], schema: dict, *, temperature: float,
+                       max_output_tokens: int) -> RawCompletion: ...
+
+class ModelRouter:                           # src/scoutqa/llm/router.py — provider-agnostic middleware
+    async def generate(self, stage: str, messages: list[Message], output: type[T]) -> Generation[T]: ...
+    def estimate(self, stage, messages, output) -> dict  # --dry-run, no call
 ```
-- **Providers:** `anthropic` (official SDK; native structured output, `cache_control`), `openai` (official
-  SDK, JSON-schema strict) — also covers **any OpenAI-compatible endpoint** via `base_url` (Ollama,
-  vLLM, LM Studio, Azure OpenAI, OpenRouter, …), `gemini` (google-genai SDK), `fake` (tests, recorded
-  responses). `litellm` available as an *optional* adapter only.
-  *Why not LiteLLM by default:* this process holds API keys for several providers and browser session
-  cookies; LiteLLM 1.82.7/1.82.8 were compromised on PyPI in March 2026 (credential-stealing `.pth`).
-  Thin adapters over official SDKs keep the dependency surface small and give direct control over
-  structured-output and caching semantics.
-- **Portable schemas:** output models are designed to the strictest common subset (OpenAI strict: all
-  fields required/nullable, `additionalProperties: false`, no `oneOf`), so any provider works. Weak/local
-  models get constrained decoding where supported (Ollama `format`) + the repair loop.
-- **Middleware:** response cache (hash of model + messages + schema), retry/backoff, concurrency limit,
-  usage ledger (input/output/cached tokens, cost estimate, latency per stage), **budget caps** (tokens/USD
-  per run), `--dry-run` estimate (batches × estimated tokens) before any call.
-- **Routing:** per-stage models in config (`scenarios`, `expand`, `e2e`, `repair`), with `default`.
+A provider only turns `(messages, schema)` into text — caching, retries, JSON/schema repair, budget
+enforcement and usage accounting all live once in `ModelRouter`, so behaviour is identical across providers.
+
+- **Providers implemented:** `anthropic` (tool-forced structured output; a cacheable system message gets
+  an ephemeral `cache_control` breakpoint), `openai` (Chat Completions, `response_format` strict JSON
+  schema) — also reaches **any OpenAI-compatible endpoint** via `base_url`: Ollama, vLLM, LM Studio, Groq,
+  DeepSeek, Together, OpenRouter, Mistral, xAI, Fireworks, Perplexity, Gemini's own OpenAI-compat route,
+  `azure_openai` (dedicated: `AsyncAzureOpenAI`, `azure_endpoint` + deployment + `api_version`; reuses the
+  `openai` adapter's request/response logic), `gemini` (google-genai SDK, `response_json_schema` — a plain
+  JSON Schema, unlike the older OpenAPI-subset `response_schema`), `fake` (in-memory, every router test;
+  also a real profile provider for a zero-key pipeline smoke check — see `scoutqa models --test`).
+  No LiteLLM dependency, even optionally: this process holds API keys for several providers and browser
+  session cookies; LiteLLM 1.82.7/1.82.8 were compromised on PyPI in March 2026 (credential-stealing
+  `.pth`). Thin adapters over official SDKs (all lazily imported — installing ScoutQA never pulls in an
+  unused provider's SDK) keep the surface small and give direct control over structured-output semantics.
+- **Portable schemas** (`llm/schema.py`): a Pydantic output model → the strictest common JSON-Schema
+  dialect (OpenAI strict): `$defs`/`$ref` inlined, every object `additionalProperties: false` with
+  `required` listing *every* key (an optional field becomes nullable rather than omitted), noisy Pydantic
+  keywords stripped. `render_for_prompt()` renders the same schema as readable pseudo-JSON, embedded in the
+  prompt as a fallback for providers/models with partial schema support (`json_mode: object | none`) and
+  reused verbatim in repair-retry messages.
+- **Middleware** (`llm/router.py`): response cache keyed by provider+model+stage+messages+schema (SQLite
+  `llm_cache`, docs above); retry with exponential backoff + jitter on *transient* failures only (rate
+  limit/timeout/5xx — detected from the error text, since providers don't share an exception hierarchy);
+  a separate JSON/schema **repair loop** (`llm.max_repair_attempts`) that replays the bad reply and asks
+  the model to correct it; a concurrency semaphore (`llm.concurrency`); **budget caps**
+  (`llm.budget_usd` / `llm.budget_tokens`, checked against the `llm_usage` ledger before every call);
+  `router.estimate()` for a `--dry-run` estimate with no call. Every non-cached call is recorded to
+  `llm_usage` (`llm/usage.py` prices a small table of current models, overridable via `llm.pricing`).
+- **Routing:** `llm.profiles` (named `ModelProfile`s: provider, model, key, temperature, ...) +
+  `llm.default_profile` / `llm.routing.<stage>` — any stage name works, so M8 introduces its own
+  (`scenarios`, `expand`, ...) without a router change. `ProjectConfig.llm: ModelConfig`.
+- **CLI:** `scoutqa models` lists configured profiles/routing; `scoutqa models --test [--stage X]` sends
+  one trivial structured-output request to check a profile actually works, at any provider including
+  `fake` (0 tokens, 0 setup); `scoutqa usage` shows the ledger (tokens, cost, cache size) per stage/model.
 
 ### 3.12 Interfaces
-- **CLI** (`scoutqa`): `init`, `login`, `crawl`, `map`, `generate [--rules-only] [--dry-run]`, `export`,
-  `usage`.
+- **CLI** (`scoutqa`): `init`, `login`, `crawl`, `map`, `generate [--rules-only]`, `template`, `export`,
+  `serve`, `extension`, `models [--test]`, `usage`.
 - **MCP server** (official SDK, stdio): thin wrapper over `scoutqa.pipeline`.
 
 | Tool | Notes |
@@ -379,7 +404,7 @@ dev: pytest, pytest-asyncio, ruff, mypy.
 
 ```
 ScoutQA/
-├── pyproject.toml            # src layout, extras: [anthropic, openai, gemini, keyring, litellm, dev]
+├── pyproject.toml            # src layout, extras: [anthropic, openai, gemini, all, dev]
 ├── README.md
 ├── scoutqa.example.yaml
 ├── docs/ARCHITECTURE.md
@@ -391,7 +416,8 @@ ScoutQA/
 │   ├── appmodel/      db.py · schema.sql · repo.py · graph.py
 │   ├── generate/      cases.py · rules/{fields,forms,navigation,tables,auth}.py
 │   │                  serialize.py · prompts/ · scenarios.py · expand.py · validate.py · planner.py
-│   ├── llm/           base.py · router.py · cache.py · usage.py · providers/{anthropic,openai,gemini,fake}.py
+│   ├── llm/           base.py · schema.py · router.py · cache.py · usage.py ·
+│   │                  providers/{anthropic,openai,azure_openai,gemini,fake}.py
 │   ├── template/      loader.py · mapping.py · default.py
 │   ├── export/        excel.py · csv.py · markdown.py · jsonx.py · report.py
 │   ├── service/       app.py · pairing.py  # local HTTP service for the extension (M5)
@@ -418,7 +444,7 @@ ScoutQA/
 | 4 ✅ | **Template engine + exporters + coverage/limitations report** | `crawl → generate --rules-only → export` gives a filled Excel with **0 tokens** |
 | 5 ✅ | **Local service + extension Record mode** (pairing, side panel, API observation, value shapes, coverage gaps) | Extension loaded in Playwright records a fixture flow into the app model |
 | 6 ✅ | **Extension Crawl mode** (service-driven frontier, DNR read-only rules) | Same safety invariants as M1, via the extension |
-| 7 | **Model adapter + config + routing + cache + usage/budget** (OpenAI-compatible first) | Fake-provider tests; optional live smoke |
+| 7 ✅ | **Model adapter + config + routing + cache + usage/budget** (Anthropic, OpenAI + any compatible endpoint, Azure OpenAI, Gemini, fake) | 48 new tests: schema/cache/router against the fake provider + real-SDK request/response shaping (network mocked); `scoutqa models --test` for a live check |
 | 8 | **LLM scenarios + expansion** (serializer, batching, validation/repair, dedup, incremental, context pack, review loop) | Recorded-response tests; dry-run estimates |
 | 9 | **MCP wrapper** (jobs, progress, compact outputs) | In-memory MCP client tests for every tool |
 

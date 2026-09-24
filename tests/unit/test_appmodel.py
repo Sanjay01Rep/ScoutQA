@@ -94,3 +94,41 @@ def test_transitions_resolve_to_captured_states(tmp_path: Path) -> None:
     model.resolve_transitions("admin")
     (t,) = model.transitions("admin")
     assert t["to_state"] == target
+
+
+# ---------------------------------------------------------------- M7: LLM response cache + usage ledger
+
+def test_llm_cache_round_trip(tmp_path: Path) -> None:
+    model = AppModel.open(tmp_path / "app.db")
+    assert model.cache_get("missing") is None
+    assert model.cache_size() == 0
+    usage = {"input_tokens": 10, "output_tokens": 5, "cached_input_tokens": 0}
+    model.cache_set("k1", provider="openai", model="gpt-5.1", stage="scenarios", text='{"a": 1}', usage=usage)
+    text, got_usage = model.cache_get("k1")  # type: ignore[misc]
+    assert text == '{"a": 1}' and got_usage == usage
+    assert model.cache_size() == 1
+    model.cache_set("k1", provider="openai", model="gpt-5.1", stage="scenarios", text='{"a": 2}', usage=usage)
+    assert model.cache_get("k1")[0] == '{"a": 2}'  # type: ignore[index]
+    assert model.cache_size() == 1  # replaced, not duplicated
+
+
+def test_llm_usage_ledger(tmp_path: Path) -> None:
+    model = AppModel.open(tmp_path / "app.db")
+    model.record_llm_usage(run_id="r1", stage="scenarios", provider="openai", model="gpt-5.1", input_tokens=100,
+                           output_tokens=50, cached_input_tokens=10, cost_usd=0.001, latency_s=1.2, attempts=1)
+    model.record_llm_usage(run_id="r1", stage="expand", provider="anthropic", model="claude-sonnet-5",
+                           input_tokens=200, output_tokens=80, cached_input_tokens=0, cost_usd=None,
+                           latency_s=2.0, attempts=2)
+    model.record_llm_usage(run_id="r2", stage="scenarios", provider="openai", model="gpt-5.1", input_tokens=30,
+                           output_tokens=10, cached_input_tokens=0, cost_usd=0.0005, latency_s=0.5, attempts=1)
+
+    total = model.llm_usage_total()
+    assert total == {"input_tokens": 330, "output_tokens": 140, "cost_usd": 0.0015}
+    r1_total = model.llm_usage_total("r1")
+    assert r1_total["input_tokens"] == 300 and r1_total["cost_usd"] == 0.001
+
+    all_rows = model.llm_usage_rows()
+    assert len(all_rows) == 3
+    r1_rows = model.llm_usage_rows("r1")
+    assert len(r1_rows) == 2 and {r["stage"] for r in r1_rows} == {"scenarios", "expand"}
+    assert r1_rows[1]["cost_usd"] is None and r1_rows[1]["attempts"] == 2

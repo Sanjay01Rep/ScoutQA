@@ -357,6 +357,57 @@ class AppModel:
             args.append(origin)
         return [TestCase.model_validate_json(r[0]) for r in self.conn.execute(sql + " ORDER BY rowid", args)]
 
+    # ------------------------------------------------------------------ LLM response cache
+
+    def cache_get(self, key: str) -> tuple[str, dict[str, int]] | None:
+        row = self.conn.execute("SELECT text, usage FROM llm_cache WHERE key = ?", (key,)).fetchone()
+        return (row["text"], json.loads(row["usage"])) if row else None
+
+    def cache_set(self, key: str, *, provider: str, model: str, stage: str, text: str,
+                 usage: dict[str, int]) -> None:
+        with self.tx() as c:
+            c.execute(
+                "INSERT OR REPLACE INTO llm_cache(key, provider, model, stage, text, usage, created_at)"
+                " VALUES (?, ?, ?, ?, ?, ?, ?)",
+                (key, provider, model, stage, text, json.dumps(usage), _now()),
+            )
+
+    def cache_size(self) -> int:
+        row = self.conn.execute("SELECT COUNT(*) FROM llm_cache").fetchone()
+        return int(row[0])
+
+    # ------------------------------------------------------------------ LLM usage ledger
+
+    def record_llm_usage(self, *, run_id: str | None, stage: str, provider: str, model: str, input_tokens: int,
+                         output_tokens: int, cached_input_tokens: int, cost_usd: float | None, latency_s: float,
+                         attempts: int) -> None:
+        with self.tx() as c:
+            c.execute(
+                """INSERT INTO llm_usage(run_id, stage, provider, model, input_tokens, output_tokens,
+                       cached_input_tokens, cost_usd, latency_s, attempts, created_at)
+                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                (run_id, stage, provider, model, input_tokens, output_tokens, cached_input_tokens, cost_usd,
+                 latency_s, attempts, _now()),
+            )
+
+    def llm_usage_total(self, run_id: str | None = None) -> dict[str, float]:
+        """Tokens/cost spent so far (this run if `run_id` is given, else ever) — used for budget checks."""
+        sql = ("SELECT COALESCE(SUM(input_tokens),0), COALESCE(SUM(output_tokens),0), "
+               "COALESCE(SUM(cost_usd),0) FROM llm_usage")
+        args: list[Any] = []
+        if run_id:
+            sql += " WHERE run_id = ?"
+            args.append(run_id)
+        row = self.conn.execute(sql, args).fetchone()
+        return {"input_tokens": row[0], "output_tokens": row[1], "cost_usd": row[2]}
+
+    def llm_usage_rows(self, run_id: str | None = None) -> list[sqlite3.Row]:
+        sql, args = "SELECT * FROM llm_usage", []
+        if run_id:
+            sql += " WHERE run_id = ?"
+            args.append(run_id)
+        return self.conn.execute(sql + " ORDER BY id", args).fetchall()
+
     # ------------------------------------------------------------------ internals
 
     @staticmethod

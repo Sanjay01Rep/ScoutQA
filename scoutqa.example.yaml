@@ -60,3 +60,28 @@ browser:
     quiet_ms: 500
     timeout_ms: 10000
     lazy_scroll_steps: 5
+
+# LLM setup (M7+): one entry per model you can call, then say which stage uses which.
+# Only the provider(s) you actually reference need their package installed:
+#   pip install scoutqa[anthropic]   pip install scoutqa[openai]   pip install scoutqa[gemini]
+# 'openai' also reaches any OpenAI-compatible endpoint via base_url: Ollama, vLLM, LM Studio, Groq,
+# DeepSeek, Together, OpenRouter, Mistral, xAI, ... (no api_key_env needed for a keyless local server).
+llm:
+  profiles: {}
+  # profiles:
+  #   claude:  {provider: anthropic, model: claude-sonnet-5, api_key_env: ANTHROPIC_API_KEY}
+  #   gpt:     {provider: openai, model: gpt-5.1, api_key_env: OPENAI_API_KEY}
+  #   gemini:  {provider: gemini, model: gemini-3-flash, api_key_env: GEMINI_API_KEY}
+  #   local:   {provider: openai, model: llama3.1, base_url: "http://localhost:11434/v1"}  # Ollama
+  #   azure:   {provider: azure_openai, model: my-gpt-deployment, api_key_env: AZURE_OPENAI_KEY,
+  #             azure_endpoint: "https://my-resource.openai.azure.com"}
+  default_profile: null        # profile used by any stage not listed in routing
+  routing: {}                 # e.g. {scenarios: gemini, expand: claude} — cheap model for scenarios,
+                               # a stronger one for detailed cases
+  cache: true                  # reuse an identical previous call (0 tokens)
+  max_retries: 3               # on a transient failure: rate limit, timeout, 5xx
+  max_repair_attempts: 2       # extra tries after invalid JSON / schema mismatch
+  concurrency: 4
+  budget_usd: null             # stop a run once estimated spend reaches this
+  budget_tokens: null          # stop a run once input+output tokens reach this
+  pricing: {}                 # override/add $ per 1M tokens: {"openai:gpt-5.1": [1.25, 0.125, 10.0]}

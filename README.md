@@ -7,7 +7,40 @@ structured summaries. See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
 > Phase 1 progress: ✅ M1 crawler, login, session reuse, safety guard · ✅ M2 distiller, app model
 > (SQLite), in-page states, roles · ✅ M3 rule-based test cases · ✅ M4 template + export
 > (crawl → generate → Excel with 0 tokens) · ✅ M5 local service + browser extension (Record mode)
-> · ✅ M6 extension Crawl mode · next: M7 model adapter (OpenAI-compatible first).
+> · ✅ M6 extension Crawl mode · ✅ M7 model adapter (Anthropic, OpenAI + any compatible endpoint,
+> Azure OpenAI, Gemini) · next: M8 LLM scenario/test-case generation.
+
+## Model setup (M7)
+
+Provider-agnostic: one interface, several providers, your choice of which model does which stage of
+generation (M8 will add `scenarios`/`expand`; any stage name already works). Nothing here calls a model
+until you ask it to — Milestones 1–6 are all 0 tokens regardless of what's configured here.
+
+```yaml
+# scoutqa.yaml
+llm:
+  profiles:
+    claude: {provider: anthropic, model: claude-sonnet-5, api_key_env: ANTHROPIC_API_KEY}
+    gpt:    {provider: openai, model: gpt-5.1, api_key_env: OPENAI_API_KEY}
+    local:  {provider: openai, model: llama3.1, base_url: "http://localhost:11434/v1"}  # Ollama, keyless
+  default_profile: claude
+  budget_usd: 5.0        # optional: stop a run once estimated spend reaches this
+```
+
+```powershell
+pip install scoutqa[anthropic]   # only the provider(s) you actually use need their SDK installed
+$env:ANTHROPIC_API_KEY = "..."
+scoutqa models                   # list configured profiles and routing
+scoutqa models --test            # send one trivial request to check a profile actually works
+scoutqa usage                    # tokens and estimated cost spent so far, per stage/model
+```
+
+`provider: openai` with a `base_url` reaches **any** OpenAI-compatible endpoint: Ollama, vLLM, LM Studio,
+Groq, DeepSeek, Together, OpenRouter, Mistral, xAI, and more — not just OpenAI itself. `azure_openai` is a
+separate provider for Azure's own auth (`azure_endpoint` + deployment name). `provider: fake` needs no key
+or package at all — useful to check the rest of the pipeline (caching, budget, `scoutqa usage`) works
+before spending real tokens. Every response is cached (identical call = 0 tokens on a re-run) and every
+real call is logged to the usage ledger, whether it succeeds or not.
 
 ## Record mode (browser extension)
 
