@@ -17,7 +17,7 @@ from playwright.async_api import Page
 
 from scoutqa.appmodel.repo import AppModel
 from scoutqa.config.models import ProjectConfig
-from scoutqa.crawl.auth import Authenticator
+from scoutqa.crawl.auth import Authenticator, same_path
 from scoutqa.crawl.browser import BrowserSession
 from scoutqa.crawl.capture import capture
 from scoutqa.crawl.frontier import Frontier, FrontierItem
@@ -92,6 +92,15 @@ class Explorer:
         final = normalize_url(page.url) or item.url
 
         if self.auth.enabled and not retried and await self._session_lost(page, item.url):
+            if not await self._reauth_needed(page):
+                # `_session_lost` saw a password field, but not at the real login URL: an in-app prompt
+                # (e.g. "confirm your password" before a sensitive admin action) can look identical to a
+                # dead session without being one. A full re-login here would just bounce off this still-
+                # valid session back to wherever it lands, with no login form to fill in — so trust this
+                # independent check over the first guess rather than let that crash the whole crawl.
+                self.result.errors.append(NavigationError(
+                    url=final, error="an in-app prompt (not the login page) asked for a password; skipped"))
+                return
             if self.result.reauth_count < self.cfg.auth.max_reauth:
                 self.result.reauth_count += 1
                 log.warning("Session expired while opening %s; logging in again", item.url)
@@ -131,6 +140,22 @@ class Explorer:
         login_url = normalize_url(self.cfg.auth.login_url or "")
         if login_url and requested == login_url:
             return False
+        return await self.auth.looks_like_login_page(page)
+
+    async def _reauth_needed(self, page: Page) -> bool:
+        """Landing squarely on the configured login URL is trusted outright. Anything else that merely
+        *looks* like a login page (a password field is visible) gets a second, independent check at
+        `check_url`/`base_url` before a full re-login is attempted — a one-off in-app prompt elsewhere in
+        the app isn't the same thing as the crawl's own session actually dying."""
+        login_url = self.cfg.auth.login_url
+        if login_url and same_path(page.url, login_url):
+            return True
+        check_url = self.cfg.auth.check_url or self.cfg.base_url
+        try:
+            await page.goto(check_url, wait_until="domcontentloaded")
+            await self.session.settle(page)
+        except PlaywrightError:
+            return True  # can't even reach the check page; safest to assume the session really is gone
         return await self.auth.looks_like_login_page(page)
 
     # ------------------------------------------------------------------ in-page actions

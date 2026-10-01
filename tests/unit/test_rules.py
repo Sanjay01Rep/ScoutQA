@@ -92,6 +92,9 @@ def test_range_values() -> None:
 @pytest.mark.parametrize(("pattern", "module"), [
     ("/items/{id}/edit", "Items"), ("/app/orders/{id}", "Orders"), ("/", "Home"),
     ("/user-settings", "User Settings"), ("/items?page={v}", "Items"),
+    # A literal front-controller filename (PHP's classic routing style, e.g. OrangeHRM) carries no module
+    # identity of its own — the real module is the next segment, not "Index Php".
+    ("/web/index.php/pim/viewEmployeeList", "Pim"), ("/index.php/admin/users", "Admin"),
 ])
 def test_module_for(pattern: str, module: str) -> None:
     assert module_for(pattern) == module

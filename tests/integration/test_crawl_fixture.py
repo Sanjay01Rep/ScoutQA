@@ -127,6 +127,20 @@ async def test_reauth_mid_crawl(app_server: FixtureServer, make_config: ConfigFa
     assert not any(p.has_password_field for p in result.pages if not p.url.endswith("/login"))
 
 
+async def test_in_app_password_prompt_is_not_mistaken_for_session_loss(
+        app_server: FixtureServer, make_config: ConfigFactory, creds: tuple[str, str]) -> None:
+    # Real-world example this reproduces: OrangeHRM's Maintenance module asks an already-logged-in admin
+    # to "confirm your password" before a sensitive action — a page with a visible password field that
+    # has nothing to do with the crawl's own session. A full re-login here would bounce off the still-
+    # valid session with no login form to fill in, which used to abort the entire crawl.
+    cfg = make_config(scope={"start_urls": [f"{app_server.base_url}admin/maintenance"], "max_pages": 10})
+    result = (await pipeline.crawl(cfg)).result
+    assert result.reauth_count == 0
+    assert any("in-app prompt" in e.error for e in result.errors)
+    assert not any(p.url.endswith("/admin/maintenance") for p in result.pages)
+    assert "/dashboard" in _paths(result, app_server.base_url)  # the crawl carried on normally otherwise
+
+
 async def test_max_pages_stops_crawl(app_server: FixtureServer, make_config: ConfigFactory,
                                      creds: tuple[str, str]) -> None:
     result = (await pipeline.crawl(make_config(scope={"max_pages": 4}))).result

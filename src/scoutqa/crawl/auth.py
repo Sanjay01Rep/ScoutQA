@@ -196,7 +196,7 @@ class Authenticator:
         return not await self.looks_like_login_page(page)
 
     async def looks_like_login_page(self, page: Page) -> bool:
-        if self.auth.login_url and _same_path(page.url, self.auth.login_url):
+        if self.auth.login_url and same_path(page.url, self.auth.login_url):
             return True
         try:
             return await page.locator('input[type="password"]').first.is_visible()
@@ -228,6 +228,6 @@ class Authenticator:
         await session.settle(page)
 
 
-def _same_path(url_a: str, url_b: str) -> bool:
+def same_path(url_a: str, url_b: str) -> bool:
     a, b = urlsplit(url_a), urlsplit(url_b)
     return a.netloc.lower() == b.netloc.lower() and a.path.rstrip("/") == b.path.rstrip("/")

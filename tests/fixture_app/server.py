@@ -323,6 +323,14 @@ def make_handler(state: FixtureState) -> type[BaseHTTPRequestHandler]:
             elif path.startswith("/items/") and path.removeprefix("/items/").isdigit():
                 item = path.removeprefix("/items/")
                 page(f"Item {item}", _item_detail(item, role), ITEM_DETAIL_SCRIPT)
+            elif path == "/admin/maintenance":
+                # A step-up "confirm your password" admin gate (real-world example: OrangeHRM's
+                # Maintenance module) — looks like a login page (visible password field) but the session
+                # is still perfectly valid; ScoutQA must not treat this as session loss.
+                page("Administrator Access", "<p>Confirm your password to continue.</p>"
+                                             '<form method="post" action="/admin/maintenance">'
+                                             '<label>Password <input name="password" type="password"></label>'
+                                             '<button type="submit">Confirm</button></form>')
             elif path == "/admin/users":
                 if role != "admin":
                     self._send(403, _page("Forbidden", "<p>You do not have access.</p>", role=role))
