@@ -1,8 +1,8 @@
 # ScoutQA — Step-by-Step Usage Guide
 
-This walks through everything built so far (Milestones 1–6): the CLI crawler, rule-based test case
-generation, template/Excel export, and the Chrome/Edge extension (Record mode + Crawl mode). No AI/API
-keys are needed for any of this — Milestone 7+ (LLM generation) is not built yet.
+This walks through everything built so far (Milestones 1–9): the CLI crawler, rule-based test case
+generation, template/Excel export, the Chrome/Edge extension (Record mode + Crawl mode), optional
+LLM-generated scenarios, and the MCP server. Sections 1–4 and 6–8 need no AI/API keys at all.
 
 ---
 
@@ -320,6 +320,34 @@ loses an edit. `scoutqa export` always excludes rejected cases automatically.
 
 ---
 
+## 5c. MCP server (for an MCP-capable client, e.g. Claude Code)
+
+Everything above the extension (sections 3, 5, 5b) is also available as MCP tools over stdio, for an
+agent that drives ScoutQA itself rather than you running the CLI by hand.
+
+```powershell
+pip install scoutqa[mcp]
+scoutqa mcp --config scoutqa.yaml
+```
+
+One server process is tied to one project (its `scoutqa.yaml`), same as `scoutqa serve`. Point your
+MCP-capable client at the command above; a typical session looks like: `get_project_info` →
+`login` → `crawl_app` (returns a `job_id` immediately; poll `get_run_status` until it's `completed`,
+since a real crawl can take minutes) → `get_app_map` / `generate_test_cases` (`dry_run=true` first to see
+the cost) → `review_cases` → `export`.
+
+A few things worth knowing:
+- **`configure_model` / `set_template` are preview-only.** They validate a model profile or a template
+  and hand back a ready-to-paste YAML snippet, but never edit `scoutqa.yaml` themselves — a plain rewrite
+  would strip out the file's own comments. Paste the snippet in yourself (or have your agent do it as a
+  normal file edit, not through this tool).
+- **Tool results are summaries, not full content** — `generate_test_cases` returns counts and a file
+  path, never every case, since the client's own tokens count too.
+- **No credentials ever cross this boundary.** Nothing you pass to a tool should be a secret value;
+  `configure_model` only checks that a named env var *exists*, never reads it.
+
+---
+
 ## 6. What you get
 
 The exported file contains:
@@ -352,6 +380,7 @@ assumptions for that part.
 | `scoutqa export -f xlsx\|csv\|md\|json` | Export test cases |
 | `scoutqa serve [--port N]` | Start the local service for the extension |
 | `scoutqa extension` | Show where the extension folder is |
+| `scoutqa mcp` | Start the MCP server for this project over stdio |
 | `scoutqa models [--test] [--stage X]` | List model profiles/routing, or send one live test request |
 | `scoutqa usage` | Show LLM tokens/cost spent so far |
 

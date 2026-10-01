@@ -291,24 +291,28 @@ enforcement and usage accounting all live once in `ModelRouter`, so behaviour is
   `fake` (0 tokens, 0 setup); `scoutqa usage` shows the ledger (tokens, cost, cache size) per stage/model.
 
 ### 3.12 Interfaces
-- **CLI** (`scoutqa`): `init`, `login`, `crawl`, `map`, `generate [--rules-only]`, `template`, `export`,
-  `serve`, `extension`, `models [--test]`, `usage`.
-- **MCP server** (official SDK, stdio): thin wrapper over `scoutqa.pipeline`.
+- **CLI** (`scoutqa`): `init`, `login`, `crawl`, `map`, `generate [--rules-only] [--dry-run]`, `review`,
+  `template`, `export`, `serve`, `extension`, `mcp`, `models [--test]`, `usage`.
+- **MCP server** (official SDK, stdio, `src/scoutqa/mcp/`): thin wrapper over `scoutqa.pipeline`, one
+  server process per project (`scoutqa mcp --config scoutqa.yaml`, needs `pip install scoutqa[mcp]`).
 
 | Tool | Notes |
 |---|---|
-| `configure_model` | Validates provider/model; confirms the key env var *exists*, never reads it back |
-| `set_template` | Returns detected columns + mapping for confirmation |
-| `login` *(added)* | Ensure/refresh session; `manual` opens a headed browser on the user's machine |
-| `crawl_app` | Starts a background job → `run_id`; progress notifications |
-| `get_run_status` *(added)* | Job status/progress (long crawls would exceed client tool timeouts) |
-| `get_app_map` | Compact DSL, paged by level (`summary | module | page`) |
-| `generate_scenarios` / `generate_test_cases` | Support `dry_run`; return counts + usage, not full content |
+| `get_project_info` | project/base_url/roles/auth type — cheap, read-only starting point |
+| `login` | Ensure/refresh session; `manual=True` opens a headed browser on the user's machine |
+| `crawl_app` | Starts a background job → `job_id`; a real crawl is too slow for one tool call |
+| `get_run_status` | Job status/progress (reuses the Explorer's existing progress callback) |
+| `get_app_map` | Compact DSL, paged by level (`summary \| module \| page`) |
+| `generate_test_cases` | `rules_only`/`dry_run`; returns counts + usage, never full case content (M8) |
+| `review_cases` | Approve/reject/unreview by case ID + a bounded pending list (M8's review loop) |
 | `export` | Returns file path + summary |
-| `get_usage` *(added)* | Token/cost ledger |
+| `configure_model` / `set_template` | **Preview-only**: validate and return a YAML snippet; never write scoutqa.yaml themselves (a plain rewrite would lose the file's comments/formatting) |
+| `models_list` / `test_model` / `get_usage` | Mirrors the `models`/`usage` CLI commands |
 
 MCP tools never accept credentials as arguments — anything passed to a tool ends up in the client LLM's
-context. Tool results are summaries + file paths, because the MCP client's tokens count too.
+context. Tool results are summaries + file paths, because the MCP client's tokens count too. A
+`ScoutQAError` (bad config, empty app model, budget reached) is reraised as a `ToolError` so its message
+reaches the client; an unexpected exception is not, consistent with `scoutqa serve`'s own error handling.
 
 ### 3.14 Hybrid capture: browser extension + local service
 The extension **captures**; the Python core **decides and generates**.
@@ -404,7 +408,7 @@ dev: pytest, pytest-asyncio, ruff, mypy.
 
 ```
 ScoutQA/
-├── pyproject.toml            # src layout, extras: [anthropic, openai, gemini, all, dev]
+├── pyproject.toml            # src layout, extras: [anthropic, openai, gemini, mcp, all, dev]
 ├── README.md
 ├── scoutqa.example.yaml
 ├── docs/ARCHITECTURE.md
@@ -414,16 +418,17 @@ ScoutQA/
 │   ├── crawl/         browser.py · auth.py · scope.py · safety.py · explorer.py · waits.py
 │   ├── distill/       extractor.js · extract.py · spec.py · redact.py · fingerprint.py · layout.py
 │   ├── appmodel/      db.py · schema.sql · repo.py · graph.py
-│   ├── generate/      cases.py · rules/{fields,forms,navigation,tables,auth}.py
-│   │                  serialize.py · prompts/ · scenarios.py · expand.py · validate.py · planner.py
+│   ├── generate/      cases.py · engine.py · rules/{fields,forms,navigation,tables,auth}.py
+│   │                  serialize.py · llm_prompts.py · llm_schemas.py · llm_pipeline.py (M8)
+│   │                  dedup.py · context_pack.py
 │   ├── llm/           base.py · schema.py · router.py · cache.py · usage.py ·
 │   │                  providers/{anthropic,openai,azure_openai,gemini,fake}.py
 │   ├── template/      loader.py · mapping.py · default.py
 │   ├── export/        excel.py · csv.py · markdown.py · jsonx.py · report.py
 │   ├── service/       app.py · pairing.py  # local HTTP service for the extension (M5)
+│   ├── mcp/           server.py · tools.py · jobs.py  # stdio MCP server (M9), extra [mcp]
 │   ├── pipeline.py    # library API used by CLI, MCP and the local service
-│   ├── cli.py
-│   └── mcp_server.py
+│   └── cli.py
 ├── extension/         # MV3 extension (TypeScript): manifest, side panel, content script, worker (M5–M6)
 └── tests/
     ├── fixture_app/   # local web app: login, SPA routes, modal, iframe, lazy list, template pages,
@@ -446,7 +451,7 @@ ScoutQA/
 | 6 ✅ | **Extension Crawl mode** (service-driven frontier, DNR read-only rules) | Same safety invariants as M1, via the extension |
 | 7 ✅ | **Model adapter + config + routing + cache + usage/budget** (Anthropic, OpenAI + any compatible endpoint, Azure OpenAI, Gemini, fake) | 48 new tests: schema/cache/router against the fake provider + real-SDK request/response shaping (network mocked); `scoutqa models --test` for a live check |
 | 8 ✅ | **LLM scenarios + expansion** (serializer, batching, validation/repair, dedup, incremental, context pack, review loop) | `scoutqa generate --no-rules-only`/`--dry-run` and `scoutqa review` against the fake provider + a live fixture-app smoke test; 20 new tests |
-| 9 | **MCP wrapper** (jobs, progress, compact outputs) | In-memory MCP client tests for every tool |
+| 9 ✅ | **MCP wrapper** (jobs, progress, compact outputs) | In-memory MCP client tests for every tool + a real stdio subprocess smoke test |
 
 The deterministic pipeline (M1–M4) is proven end-to-end before any tokens are spent, and the extension
 (M5–M6) plugs into a pipeline that already produces output.

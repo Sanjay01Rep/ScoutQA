@@ -132,6 +132,21 @@ Credentials are only ever referenced by env-var **name** in `scoutqa.yaml`. Sess
 are stored in `%USERPROFILE%\.scoutqa\projects\<project>\` (override with `SCOUTQA_HOME`), never in
 this folder.
 
+## MCP server (M9)
+
+Everything above is also available to an MCP-capable client (e.g. Claude Code) as tools over stdio:
+
+```powershell
+pip install scoutqa[mcp]
+scoutqa mcp --config scoutqa.yaml
+```
+
+One server process per project. `crawl_app` starts in the background and returns a `job_id` immediately
+(`get_run_status` polls it) — a real crawl can take minutes, far longer than a client is willing to hold
+one tool call open. `generate_test_cases`/`export` return counts and a file path, never the full case
+content, since the client's tokens count too. `configure_model`/`set_template` only validate and return a
+YAML snippet to paste in yourself; nothing writes to `scoutqa.yaml` on your behalf.
+
 ## Safety
 
 Read-only by default. Four independent layers stop the crawler from changing data:

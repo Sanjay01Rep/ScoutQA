@@ -292,6 +292,26 @@ def serve(
 
 
 @app.command()
+def mcp(
+    config: ConfigOpt = Path(DEFAULT_CONFIG_NAME),
+    verbose: VerboseOpt = False,
+) -> None:
+    """Run the MCP server for this project over stdio (for an MCP-capable client, e.g. Claude Code)."""
+    setup_logging(verbose)
+    try:
+        cfg = load_config(config)
+    except ScoutQAError as exc:
+        raise _fail(exc) from None
+    from scoutqa.mcp.server import run_stdio
+
+    try:
+        asyncio.run(run_stdio(cfg))
+    except ImportError:
+        console.print("[red]Error:[/red] the MCP server needs an extra: pip install scoutqa[mcp]")
+        raise typer.Exit(code=1) from None
+
+
+@app.command()
 def extension() -> None:
     """Show where the browser extension is and how to install it."""
     from scoutqa.distill.extract import extension_dir
