@@ -5,12 +5,16 @@ import { Dashboard } from './pages/Dashboard'
 import { ExportPage } from './pages/ExportPage'
 import { GeneratePage } from './pages/GeneratePage'
 import { LoginPage } from './pages/LoginPage'
+import { ModelsPage } from './pages/ModelsPage'
 import { ReviewPage } from './pages/ReviewPage'
 import { SetupPage } from './pages/SetupPage'
+import { TemplatePage } from './pages/TemplatePage'
 
 const TABS = [
   { key: 'dashboard', label: 'Dashboard', render: () => <Dashboard /> },
   { key: 'setup', label: 'Setup', render: () => <SetupPage /> },
+  { key: 'models', label: 'Models', render: () => <ModelsPage /> },
+  { key: 'template', label: 'Template', render: () => <TemplatePage /> },
   { key: 'login', label: 'Login', render: () => <LoginPage /> },
   { key: 'crawl', label: 'Crawl', render: () => <CrawlPage /> },
   { key: 'generate', label: 'Generate', render: () => <GeneratePage /> },

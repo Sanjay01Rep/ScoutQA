@@ -107,6 +107,21 @@
   gap: 8px;
 }
 
+.button-row-spaced {
+  margin-top: 12px;
+}
+
+.yaml-snippet {
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 10px 12px;
+  font-family: var(--mono);
+  font-size: 0.85em;
+  overflow-x: auto;
+  white-space: pre;
+}
+
 .btn {
   font: inherit;
   font-weight: 600;
