@@ -19,8 +19,9 @@ _SYNONYMS: dict[F, tuple[str, ...]] = {
            "test case no", "test case number", "s no", "sl no", "sr no", "no", "tc #", "test case #", "#"),
     F.MODULE: ("module", "feature", "area", "component", "functional area", "module name", "epic", "screen module"),
     F.TITLE: ("title", "test case", "test case title", "test case name", "testcase", "test title", "summary",
-              "name", "test case description", "description", "objective", "test objective"),
-    F.SCENARIO: ("scenario", "test scenario", "scenario name", "scenario description", "use case"),
+              "name", "objective", "test objective"),
+    F.SCENARIO: ("scenario", "test scenario", "scenario name", "scenario description", "use case",
+                "test case description", "description"),
     F.PRECONDITIONS: ("preconditions", "precondition", "pre conditions", "pre condition", "prerequisites",
                       "prerequisite", "pre requisites", "setup", "given"),
     F.STEPS: ("steps", "test steps", "steps to execute", "procedure", "test procedure", "actions", "when",
@@ -28,14 +29,15 @@ _SYNONYMS: dict[F, tuple[str, ...]] = {
     F.EXPECTED: ("expected result", "expected results", "expected", "expected outcome", "expected behaviour",
                  "expected behavior", "then", "expected output"),
     F.PRIORITY: ("priority", "severity", "importance", "criticality", "test priority"),
-    F.TYPE: ("type", "test type", "test case type", "category", "testing type", "classification"),
+    F.TYPE: ("type", "test type", "test case type", "testcase type", "category", "testing type", "classification"),
     F.TEST_DATA: ("test data", "data", "input data", "inputs", "test input"),
     F.ROLES: ("role", "roles", "user role", "user type", "persona", "actor"),
     F.TAGS: ("tags", "labels", "keywords"),
     F.PAGE: ("page", "screen", "url", "page url", "screen name", "form"),
     F.NOTES: ("notes", "remarks", "comments", "comment", "review notes", "assumptions"),
     F.REVIEW: ("review status", "review", "reviewed", "approval status"),
-    F.STEP_NO: ("step no", "step number", "step", "step id", "step num", "step #", "s no step"),
+    F.STEP_NO: ("step no", "step number", "step", "step id", "step num", "step #", "s no step",
+               "seq", "seq no", "seq number", "sequence", "sequence no", "sequence number"),
     F.STEP_ACTION: ("step description", "step action", "action", "step details", "test step"),
     F.STEP_EXPECTED: ("step expected result", "step expected", "expected step result"),
     F.STEP_DATA: ("step data", "step test data"),
@@ -50,6 +52,12 @@ _EXECUTION = ("status", "actual result", "actual results", "actual", "actual out
 _LOOKUP: dict[str, F] = {syn: field for field, syns in _SYNONYMS.items() for syn in syns}
 _BY_LENGTH = sorted(_LOOKUP, key=len, reverse=True)  # longest synonym wins in fuzzy matching
 _ALIASES: dict[str, F] = {f.value: f for f in F} | {"expected": F.EXPECTED, "blank": F.BLANK}
+
+
+def _contains_word(key: str, syn: str) -> bool:
+    """Whole-word-ish containment: `syn` must sit at a word boundary on both sides, so a short synonym
+    doesn't fuzzy-match a fragment of an unrelated longer word (e.g. 'screen' inside 'screenshot')."""
+    return re.search(rf"(?:^|\s){re.escape(syn)}(?:\s|$)", key) is not None
 
 
 def normalise(header: str) -> str:
@@ -89,7 +97,7 @@ def _decide(key: str, overrides: dict[str, str], used: set[F]) -> tuple[F, str]:
         return F.BLANK, "execution-time column (left blank)"
     field, reason = _LOOKUP.get(key), "synonym"
     if field is None:  # fuzzy: 'Expected Result(s) / Outcome' contains the synonym 'expected result'
-        match = next((syn for syn in _BY_LENGTH if len(syn) > 4 and syn in key), None)
+        match = next((syn for syn in _BY_LENGTH if len(syn) > 4 and _contains_word(key, syn)), None)
         if match is None:
             return F.CUSTOM, "unknown column (blank until filled by the LLM or a configured default)"
         field, reason = _LOOKUP[match], f"contains '{match}'"
@@ -117,8 +125,17 @@ def _resolve_step_layout(columns: list[ColumnSpec]) -> None:
         return
     for c in columns:
         if c.field is F.STEPS:
-            c.field, c.reason = F.STEP_ACTION, "step-per-row layout"
-        elif c.field is F.EXPECTED and not any(x.field is F.STEP_EXPECTED for x in columns):
-            c.field, c.reason = F.STEP_EXPECTED, "step-per-row layout"
-        elif c.field is F.TEST_DATA and not any(x.field is F.STEP_DATA for x in columns):
-            c.field, c.reason = F.STEP_DATA, "step-per-row layout"
+            if any(x.field is F.STEP_ACTION for x in columns):
+                c.field, c.reason = F.CUSTOM, "duplicate of an already mapped field"
+            else:
+                c.field, c.reason = F.STEP_ACTION, "step-per-row layout"
+        elif c.field is F.EXPECTED:
+            if any(x.field is F.STEP_EXPECTED for x in columns):
+                c.field, c.reason = F.CUSTOM, "duplicate of an already mapped field"
+            else:
+                c.field, c.reason = F.STEP_EXPECTED, "step-per-row layout"
+        elif c.field is F.TEST_DATA:
+            if any(x.field is F.STEP_DATA for x in columns):
+                c.field, c.reason = F.CUSTOM, "duplicate of an already mapped field"
+            else:
+                c.field, c.reason = F.STEP_DATA, "step-per-row layout"

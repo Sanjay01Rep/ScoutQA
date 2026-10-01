@@ -60,6 +60,7 @@ def test_default_template() -> None:
     ("Test Steps", F.STEPS), ("Expected Result(s)", F.EXPECTED), ("Severity", F.PRIORITY), ("Test Data", F.TEST_DATA),
     ("Actual Result", F.BLANK), ("Status", F.BLANK), ("Executed By", F.BLANK), ("Defect ID", F.BLANK),
     ("Automation Candidate?", F.CUSTOM), ("Remarks", F.NOTES), ("User Role", F.ROLES), ("Screen", F.PAGE),
+    ("Seq", F.STEP_NO), ("Sequence No", F.STEP_NO), ("Testcase Type", F.TYPE),
 ])
 def test_synonyms(header: str, field: F) -> None:
     (column,) = map_columns([header])
@@ -71,11 +72,39 @@ def test_scenario_and_title_both_present() -> None:
     assert cols == {"Scenario": F.SCENARIO, "Test Case Title": F.TITLE, "Steps": F.STEPS}
 
 
+def test_description_is_the_scenario_when_a_title_column_already_exists() -> None:
+    # 'Description' alone (no title column) still falls back to the case title via
+    # _resolve_title_vs_scenario; with both, it must not collide with 'Name'.
+    cols = {c.name: c.field for c in map_columns(["Name", "Description"])}
+    assert cols == {"Name": F.TITLE, "Description": F.SCENARIO}
+    (only,) = map_columns(["Description"])
+    assert only.field is F.TITLE
+
+
 def test_step_per_row_detection() -> None:
     cols = {c.name: c.field for c in map_columns(["TC ID", "Title", "Step No", "Step Description", "Expected Result",
                                                     "Test Data"])}
     assert cols["Step No"] is F.STEP_NO and cols["Step Description"] is F.STEP_ACTION
     assert cols["Expected Result"] is F.STEP_EXPECTED and cols["Test Data"] is F.STEP_DATA
+
+
+def test_fuzzy_match_respects_word_boundaries() -> None:
+    # 'screen' must not fuzzy-match inside the unrelated word 'screenshot' (it's a coincidence of
+    # spelling, not evidence this is a page/screen-name column); a plain header with no other steps-ish
+    # column around legitimately still matches the whole word 'steps' later in the same header.
+    (column,) = map_columns(["Mandate Screenshot (Type Yes for required steps)"])
+    assert "screen" not in column.reason
+    assert column.field is not F.PAGE
+
+
+def test_step_per_row_second_steps_like_column_becomes_custom_not_a_collision() -> None:
+    # A second, unrelated column that also happens to contain the whole word 'steps' (here, as part of
+    # ordinary English rather than meaning "this is the steps column") must not silently share
+    # STEP_ACTION with the real step-description column.
+    cols = {c.name: c.field for c in map_columns(
+        ["Seq", "Step Description", "Expected Result", "Mandate Screenshot (for required steps)"])}
+    assert cols["Step Description"] is F.STEP_ACTION
+    assert cols["Mandate Screenshot (for required steps)"] is F.CUSTOM
 
 
 def test_overrides_and_defaults() -> None:
