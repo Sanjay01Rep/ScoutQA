@@ -95,6 +95,22 @@ def layout_lines(layout: LayoutSpec) -> list[str]:
     return lines
 
 
+def page_block(state: StateRow, variant_states: list[StateRow], instances: int = 1) -> list[str]:
+    """One page's compact DSL, with its in-page variants (tabs/dialogs) as a diff against the base page.
+    Shared by `render_app` (the whole app, for `scoutqa map`) and the LLM serializer (one module at a time).
+    """
+    count = f" x{instances}" if instances > 1 else ""
+    status = f" [{state.status.value}]" if state.status.value != "unchanged" else ""
+    out = [f"PAGE {state.id} {state.spec.url_pattern} {_q(state.title)}{count}{status}"]
+    base_lines = spec_lines(state.spec)
+    out += [f"  {line}" for line in base_lines]
+    known = {_REF.sub("", line) for line in base_lines}
+    for v in variant_states:
+        out.append(f"  STATE {v.id} via {v.variant}")
+        out += [f"    {line}" for line in spec_lines(v.spec) if _REF.sub("", line) not in known]
+    return out
+
+
 def render_app(model: AppModel, role: str, project: str = "") -> str:
     states = model.states(role)
     groups = model.template_groups(role)
@@ -117,15 +133,7 @@ def render_app(model: AppModel, role: str, project: str = "") -> str:
         if group.representative != s.id and group.representative in printed:
             continue
         printed.add(s.id)
-        count = f" x{len(group.state_ids)}" if len(group.state_ids) > 1 else ""
-        status = f" [{s.status.value}]" if s.status.value != "unchanged" else ""
-        out.append(f"PAGE {s.id} {s.spec.url_pattern} {_q(s.title)}{count}{status}")
-        base_lines = spec_lines(s.spec)
-        out += [f"  {line}" for line in base_lines]
-        known = {_REF.sub("", line) for line in base_lines}
-        for v in variants.get(s.id, []):
-            out.append(f"  STATE {v.id} via {v.variant}")
-            out += [f"    {line}" for line in spec_lines(v.spec) if _REF.sub("", line) not in known]
+        out += page_block(s, variants.get(s.id, []), len(group.state_ids))
     return "\n".join(out)
 
 

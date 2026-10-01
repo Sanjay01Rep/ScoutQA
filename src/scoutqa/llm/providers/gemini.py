@@ -8,7 +8,7 @@ gets works here unmodified.
 from __future__ import annotations
 
 import time
-from typing import Any
+from typing import Any, cast
 
 from scoutqa.llm.base import Message, ModelClient, ProviderError, RawCompletion, Usage
 
@@ -41,7 +41,8 @@ class GeminiClient(ModelClient):
         )
         started = time.monotonic()
         try:
-            resp = await self._client.aio.models.generate_content(model=self.model, contents=contents, config=config)
+            resp = await self._client.aio.models.generate_content(model=self.model, contents=cast(Any, contents),
+                                                                   config=config)
         except genai_errors.APIError as exc:
             raise ProviderError(f"{self.provider} request failed: {exc}") from exc
         latency = time.monotonic() - started

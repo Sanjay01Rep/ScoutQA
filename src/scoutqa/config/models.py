@@ -187,6 +187,23 @@ class GenerationConfig(_Strict):
         description="Module name -> URL-pattern globs, e.g. {Orders: ['/orders*', '/cart*']}. "
                     "Unmatched pages get a module from their first path segment.",
     )
+    use_llm: bool = Field(
+        default=False, description="Also run LLM scenario + expansion generation (spends tokens; requires "
+                                   "llm.profiles). `scoutqa generate --rules-only` always overrides this off; "
+                                   "`--no-rules-only` always turns it on for that run.",
+    )
+    scenarios_per_module: int = Field(default=10, ge=1, le=40, description="Scenario ideas requested per module.")
+    cross_module_scenarios: int = Field(
+        default=5, ge=0, le=20, description="End-to-end scenario ideas spanning more than one module (0 to skip)."
+    )
+    cases_per_batch: int = Field(
+        default=4, ge=1, le=10, description="Scenarios expanded into detailed cases per LLM call."
+    )
+    context_pack: list[str] = Field(
+        default_factory=list,
+        description="Paths (.md/.txt/.json) to requirements, user stories, an OpenAPI spec, or existing "
+                    "test cases. Matched to modules by keyword, 0 tokens — only matching snippets are sent.",
+    )
 
 
 class TemplateConfig(_Strict):

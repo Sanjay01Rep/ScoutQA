@@ -13,12 +13,15 @@ from scoutqa.llm.base import Message
 PROMPT_VERSION = "1"  # bump to invalidate every cached response after a prompt-shape change
 
 
-def cache_key(provider: str, model: str, stage: str, messages: list[Message], schema: dict[str, Any]) -> str:
+def cache_key(provider: str, model: str, stage: str, messages: list[Message], schema: dict[str, Any], *,
+             temperature: float = 0.0, max_output_tokens: int = 0) -> str:
     payload = {
         "v": PROMPT_VERSION,
         "provider": provider,
         "model": model,
         "stage": stage,
+        "temperature": temperature,
+        "max_output_tokens": max_output_tokens,
         "messages": [[m.role, m.content] for m in messages],
         "schema": schema,
     }

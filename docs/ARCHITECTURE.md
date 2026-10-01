@@ -445,7 +445,7 @@ ScoutQA/
 | 5 ✅ | **Local service + extension Record mode** (pairing, side panel, API observation, value shapes, coverage gaps) | Extension loaded in Playwright records a fixture flow into the app model |
 | 6 ✅ | **Extension Crawl mode** (service-driven frontier, DNR read-only rules) | Same safety invariants as M1, via the extension |
 | 7 ✅ | **Model adapter + config + routing + cache + usage/budget** (Anthropic, OpenAI + any compatible endpoint, Azure OpenAI, Gemini, fake) | 48 new tests: schema/cache/router against the fake provider + real-SDK request/response shaping (network mocked); `scoutqa models --test` for a live check |
-| 8 | **LLM scenarios + expansion** (serializer, batching, validation/repair, dedup, incremental, context pack, review loop) | Recorded-response tests; dry-run estimates |
+| 8 ✅ | **LLM scenarios + expansion** (serializer, batching, validation/repair, dedup, incremental, context pack, review loop) | `scoutqa generate --no-rules-only`/`--dry-run` and `scoutqa review` against the fake provider + a live fixture-app smoke test; 20 new tests |
 | 9 | **MCP wrapper** (jobs, progress, compact outputs) | In-memory MCP client tests for every tool |
 
 The deterministic pipeline (M1–M4) is proven end-to-end before any tokens are spent, and the extension

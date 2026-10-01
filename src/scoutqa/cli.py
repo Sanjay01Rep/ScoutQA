@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import asyncio
 from pathlib import Path
-from typing import Annotated
+from typing import Annotated, Any
 
 import typer
 from rich.console import Console
@@ -109,18 +109,40 @@ def crawl(
 @app.command()
 def generate(
     config: ConfigOpt = Path(DEFAULT_CONFIG_NAME),
-    rules_only: Annotated[bool, typer.Option("--rules-only", help="Zero-token rule packs only")] = True,
+    rules_only: Annotated[bool | None, typer.Option(
+        "--rules-only/--no-rules-only",
+        help="Force the LLM stage off/on for this run. Default: follow generation.use_llm in scoutqa.yaml.",
+    )] = None,
+    dry_run: Annotated[bool, typer.Option(
+        "--dry-run", help="Estimate the LLM stage's token/cost without calling anything or writing cases",
+    )] = False,
     list_cases: Annotated[bool, typer.Option("--list", help="Print every generated case")] = False,
     verbose: VerboseOpt = False,
 ) -> None:
-    """Generate test cases from the app model (rule packs: zero tokens)."""
+    """Generate test cases from the app model: rule packs (zero tokens) plus, if enabled, LLM scenarios."""
     setup_logging(verbose)
     try:
         cfg = load_config(config)
+        if dry_run:
+            estimate = pipeline.estimate_generation(cfg)
+            table = Table(title="LLM dry run — no calls made, nothing written")
+            for column in ("Module", "Approx. input tokens", "Approx. cost"):
+                table.add_column(column)
+            for row in estimate.estimate.calls:
+                cost = row["approx_cost_usd"]
+                table.add_row(str(row["module"]), f"{row['approx_input_tokens']:,}",
+                             f"${cost:.4f}" if cost is not None else "unknown")
+            console.print(table)
+            total_cost = estimate.estimate.approx_cost_usd
+            console.print(f"Total: ~{estimate.estimate.approx_input_tokens:,} input tokens · "
+                          f"{'$' + format(total_cost, '.4f') if total_cost is not None else 'cost unknown'}"
+                          " (scenario stage only; expansion cost depends on how many scenarios come back)")
+            return
         report = pipeline.generate(cfg, rules_only=rules_only)
     except ScoutQAError as exc:
         raise _fail(exc) from None
-    summary = Table(title=f"{len(report.cases)} test cases (0 tokens)", show_header=True)
+    summary = Table(title=f"{len(report.cases)} test cases ({report.rule_cases} rule, {report.llm_cases} llm)",
+                    show_header=True)
     summary.add_column("Module")
     summary.add_column("Cases", justify="right")
     for module, count in report.by_module.items():
@@ -129,6 +151,9 @@ def generate(
     console.print("By priority: " + ", ".join(f"{k} {v}" for k, v in sorted(report.by_priority.items())))
     console.print("By type:     " + ", ".join(f"{k} {v}" for k, v in sorted(report.by_type.items())))
     console.print(f"Need review (contain assumptions): {report.needs_review}")
+    if report.llm_cases:
+        console.print(f"[dim]LLM stage: {report.llm_calls} call(s) ({report.llm_cached_calls} cached) — "
+                      f"see `scoutqa usage` for tokens/cost[/dim]")
     if list_cases:
         cases = Table(show_header=True)
         for column in ("ID", "Priority", "Title", "Rule"):
@@ -137,6 +162,55 @@ def generate(
             cases.add_row(case.id, case.priority.value, case.title, case.source.generator)
         console.print(cases)
     console.print(f"Cases: {report.cases_path}")
+
+
+@app.command()
+def review(
+    config: ConfigOpt = Path(DEFAULT_CONFIG_NAME),
+    approve: Annotated[list[str] | None, typer.Option("--approve", help="Case ID to mark reviewed (repeatable)")]
+    = None,
+    reject: Annotated[list[str] | None, typer.Option("--reject", help="Case ID to reject (repeatable)")] = None,
+    unreview: Annotated[list[str] | None, typer.Option("--unreview", help="Case ID to clear back to draft")] = None,
+    pending: Annotated[bool, typer.Option("--pending", help="List cases that need review (default if no flags)")]
+    = False,
+) -> None:
+    """Review generated test cases: approve, reject, or clear a review decision by case ID."""
+    try:
+        cfg = load_config(config)
+        ws = workspace_for(cfg.project)
+        model = pipeline.open_model(ws)
+        try:
+            by_id = {c.id: c for c in model.cases(include_rejected=True)}
+            for case_id in approve or []:
+                _review_one(by_id, case_id, model, "reviewed")
+            for case_id in reject or []:
+                _review_one(by_id, case_id, model, "rejected")
+            for case_id in unreview or []:
+                if case_id not in by_id:
+                    console.print(f"[yellow]Unknown case ID:[/yellow] {case_id}")
+                    continue
+                model.clear_review(by_id[case_id].key)
+                console.print(f"{case_id}: cleared")
+            if not (approve or reject or unreview) or pending:
+                cases = [c for c in by_id.values() if c.review_status == "draft"]
+                table = Table(title=f"{len(cases)} case(s) awaiting review", show_header=True)
+                for column in ("ID", "Priority", "Needs review", "Title"):
+                    table.add_column(column)
+                for case in sorted(cases, key=lambda c: c.id):
+                    table.add_row(case.id, case.priority.value, "yes" if case.needs_review else "", case.title)
+                console.print(table)
+        finally:
+            model.close()
+    except ScoutQAError as exc:
+        raise _fail(exc) from None
+
+
+def _review_one(by_id: dict[str, Any], case_id: str, model: Any, status: str) -> None:
+    if case_id not in by_id:
+        console.print(f"[yellow]Unknown case ID:[/yellow] {case_id}")
+        return
+    model.set_review(by_id[case_id].key, status)
+    console.print(f"{case_id}: {status}")
 
 
 @app.command()

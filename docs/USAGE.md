@@ -218,11 +218,11 @@ Executed By, Defect ID, ...) are detected automatically and left blank.
 
 ---
 
-## 5a. Model setup (for M8's LLM generation — optional today)
+## 5a. Model setup (for LLM-generated scenarios)
 
-`scoutqa generate` above is 100% rule-based and never calls a model. This section configures *which*
-model(s) ScoutQA can call once M8 (LLM-based scenarios) is built — you can set it up now and check it
-works, without it affecting anything you already do.
+Plain `scoutqa generate` above is 100% rule-based and never calls a model. This section configures *which*
+model(s) ScoutQA can call for the optional LLM stage (section 5b) — set it up and check it works first,
+without it affecting the rule-based cases you already generate.
 
 Add an `llm:` section to `scoutqa.yaml` (see `scoutqa.example.yaml` for every field):
 
@@ -264,6 +264,62 @@ all work before spending anything real.
 
 ---
 
+## 5b. LLM-generated scenarios (optional, spends tokens)
+
+Once a model profile works (section 5a), turn on the second generation stage: a model proposes business
+scenarios your rule packs can't (edge cases, multi-step flows), then expands each into a detailed case.
+Every step is checked against the app model — a step that invents an element, or an expected result nobody
+actually observed, is flagged for review rather than silently trusted.
+
+See the cost before spending anything:
+
+```powershell
+scoutqa generate --dry-run
+```
+
+This prints an approximate input-token/cost estimate per module from the app model alone — no network call,
+nothing written. (It only estimates the scenario stage; expansion cost depends on how many scenarios come
+back.)
+
+Then generate for real:
+
+```powershell
+scoutqa generate --no-rules-only   # this run only, regardless of scoutqa.yaml
+```
+
+Or turn it on for every run by setting `generation.use_llm: true` in `scoutqa.yaml` (then plain
+`scoutqa generate` includes the LLM stage; `--rules-only` still forces it off for one run if you need a
+free run). Useful knobs, also in `scoutqa.yaml` under `generation:`:
+
+```yaml
+generation:
+  use_llm: true
+  scenarios_per_module: 10      # scenario ideas requested per module
+  cross_module_scenarios: 5     # end-to-end scenarios spanning more than one module (0 to skip)
+  cases_per_batch: 4            # scenarios expanded into detailed cases per LLM call
+  context_pack:                 # optional grounding material, matched to modules by keyword (0 tokens)
+    - requirements.md
+    - existing-test-cases.json
+```
+
+Re-running `scoutqa generate` is incremental: a module whose app-model pages haven't changed won't get the
+same scenario proposed twice (and an identical call is a free cache hit — see `scoutqa usage`).
+
+**Reviewing LLM-proposed cases.** Every case with an assumption is flagged in `generate`'s summary and in
+the exported report's Trace sheet. Work through them with:
+
+```powershell
+scoutqa review                              # list cases awaiting review
+scoutqa review --approve TC-ITEMS-012       # mark reviewed (repeatable)
+scoutqa review --reject TC-ITEMS-013        # drop it from exports
+scoutqa review --unreview TC-ITEMS-012      # back to draft
+```
+
+A review decision is keyed to the case's content, not its row — regenerating never un-rejects a case or
+loses an edit. `scoutqa export` always excludes rejected cases automatically.
+
+---
+
 ## 6. What you get
 
 The exported file contains:
@@ -288,7 +344,10 @@ assumptions for that part.
 | `scoutqa login [--role R] [--force]` | Log in and save the session |
 | `scoutqa crawl [--role R] [--all-roles]` | Crawl the app, update the app model |
 | `scoutqa map [--role R]` | Print the compact app map |
-| `scoutqa generate [--list]` | Generate test cases (0 tokens) |
+| `scoutqa generate [--list]` | Generate rule-based test cases (0 tokens) |
+| `scoutqa generate --no-rules-only` | Also run the LLM stage for this run |
+| `scoutqa generate --dry-run` | Estimate the LLM stage's cost; nothing written |
+| `scoutqa review [--approve\|--reject\|--unreview ID]` | List or decide on cases awaiting review |
 | `scoutqa template [path]` | Preview a template's column mapping |
 | `scoutqa export -f xlsx\|csv\|md\|json` | Export test cases |
 | `scoutqa serve [--port N]` | Start the local service for the extension |

@@ -6,7 +6,7 @@ import re
 from dataclasses import dataclass, field
 from urllib.parse import urlsplit
 
-from scoutqa.appmodel.repo import StateRow
+from scoutqa.appmodel.repo import AppModel, StateRow
 from scoutqa.config.models import DEFAULT_PROFILE, ProjectConfig
 from scoutqa.distill.spec import ActionSpec, DialogSpec, FieldSpec, FormSpec, LayoutSpec, PageSpec
 from scoutqa.generate.cases import CaseType, Priority, Source, Step, TestCase, case_key
@@ -225,10 +225,22 @@ class RoleView:
     complete: bool  # the role's latest crawl finished without hitting a budget
 
 
+@dataclass(frozen=True)
+class ModulePage:
+    """One distinct page (a template group, deduped the same way across query-string variants) within a
+    module, for one role — with its representative state, how many instances it stands for, and its
+    in-page variants (tabs/dialogs)."""
+
+    state: StateRow
+    instances: int
+    variants: list[StateRow]
+
+
 @dataclass
 class AppView:
     facts: AppFacts
     views: dict[str, RoleView]
+    model: AppModel | None = None  # set by build_app_view(); optional so hand-built test AppViews don't need it
 
     def module(self, pattern: str) -> str:
         from scoutqa.generate.modules import module_for
@@ -243,6 +255,30 @@ class AppView:
         instances = view.instances.get(state.id, 1) if view else 1
         return PageContext(state=state, module=module or self.module(state.url_pattern), role=role,
                            facts=self.facts, layout=layout, instances=instances)
+
+    def pages_by_module(self, role: str) -> dict[str, list[ModulePage]]:
+        """Every distinct page for `role`, grouped by module — the unit both the rule engine and the LLM
+        serializer batch work by. Requires `model` (set automatically by `build_app_view`)."""
+        assert self.model is not None, "AppView.model is required for pages_by_module()"
+        view = self.views.get(role)
+        if view is None:
+            return {}
+        all_states = self.model.states(role)
+        out: dict[str, list[ModulePage]] = {}
+        seen_pages: set[tuple[str, str]] = set()
+        for group in self.model.template_groups(role):
+            page_key = (group.url_pattern.split("?", 1)[0], group.structure_hash)
+            if page_key in seen_pages:
+                continue
+            seen_pages.add(page_key)
+            rep = next((s for s in view.states if s.id == group.representative), None)
+            if rep is None:
+                continue
+            members = set(group.state_ids)
+            variants = [s for s in all_states if s.variant and s.parent_state in members]
+            module = self.module(rep.url_pattern)
+            out.setdefault(module, []).append(ModulePage(rep, len(group.state_ids), variants))
+        return out
 
 
 def field_label(f: FieldSpec) -> str:

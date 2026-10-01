@@ -42,6 +42,13 @@ safety:
 generation:
   rule_packs: [fields, forms, actions, navigation, tables, dialogs, auth, access, smoke, api]
   modules: {}                # e.g. {Checkout: ["/cart*", "/checkout*"]}; default = first path segment
+  use_llm: false               # also run LLM scenarios + expansion (needs llm.profiles below); overridden
+                               # per run by `scoutqa generate --rules-only` / `--no-rules-only`
+  scenarios_per_module: 10     # scenario ideas requested per module
+  cross_module_scenarios: 5    # end-to-end scenarios spanning more than one module (0 to skip)
+  cases_per_batch: 4           # scenarios expanded into detailed cases per LLM call
+  context_pack: []             # paths (.md/.txt/.json) to requirements, user stories, an OpenAPI spec, or
+                               # an existing test-case export — matched to modules by keyword, 0 tokens
 
 template:
   path: null                   # your .xlsx / .csv / .md / .json template; null = ID, Module, Scenario,

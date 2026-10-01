@@ -12,7 +12,7 @@ from datetime import UTC, datetime
 from enum import StrEnum
 from importlib.resources import files
 from pathlib import Path
-from typing import Any
+from typing import Any, Literal
 
 from scoutqa.distill.spec import ElementRecord, LayoutSpec, PageSpec
 from scoutqa.generate.cases import TestCase
@@ -350,12 +350,45 @@ class AppModel:
                 [(k.key, k.id, k.module, origin, k.model_dump_json(), now) for k in cases],
             )
 
-    def cases(self, origin: str | None = None) -> list[TestCase]:
+    def cases(self, origin: str | None = None, *, include_rejected: bool = False) -> list[TestCase]:
+        """Cases with review decisions applied: rejected ones excluded (unless `include_rejected`), a
+        reviewed case's content replaced by the reviewer's edit when there is one. This is what export,
+        `scoutqa generate --list` and the extension's summary all see."""
         sql, args = "SELECT spec FROM cases", []
         if origin:
             sql += " WHERE origin = ?"
             args.append(origin)
-        return [TestCase.model_validate_json(r[0]) for r in self.conn.execute(sql + " ORDER BY rowid", args)]
+        raw = [TestCase.model_validate_json(r[0]) for r in self.conn.execute(sql + " ORDER BY rowid", args)]
+        reviews = self._reviews()
+        out = []
+        for case in raw:
+            review = reviews.get(case.key)
+            if review is None:
+                out.append(case)
+                continue
+            if review["status"] == "rejected":
+                if include_rejected:
+                    case.review_status = "rejected"
+                    out.append(case)
+                continue
+            out.append(TestCase.model_validate_json(review["edited_spec"]) if review["edited_spec"] else
+                      case.model_copy(update={"review_status": "reviewed"}))
+        return out
+
+    def _reviews(self) -> dict[str, sqlite3.Row]:
+        return {r["key"]: r for r in self.conn.execute("SELECT * FROM case_reviews")}
+
+    def set_review(self, key: str, status: Literal["reviewed", "rejected"], *,
+                   edited: TestCase | None = None) -> None:
+        with self.tx() as c:
+            c.execute(
+                "INSERT OR REPLACE INTO case_reviews(key, status, edited_spec, updated_at) VALUES (?, ?, ?, ?)",
+                (key, status, edited.model_dump_json() if edited else None, _now()),
+            )
+
+    def clear_review(self, key: str) -> None:
+        with self.tx() as c:
+            c.execute("DELETE FROM case_reviews WHERE key = ?", (key,))
 
     # ------------------------------------------------------------------ LLM response cache
 

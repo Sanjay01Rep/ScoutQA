@@ -154,3 +154,14 @@ CREATE TABLE IF NOT EXISTS llm_usage (
     created_at         TEXT NOT NULL
 );
 CREATE INDEX IF NOT EXISTS llm_usage_stage ON llm_usage (stage, created_at);
+
+-- Review loop (M8): a human decision on one case, keyed by the case's stable `key` — not by its row in
+-- `cases`, so a decision survives `replace_cases()` wiping and re-inserting that origin's rows on every
+-- regeneration. 'rejected' cases are excluded by AppModel.cases(); 'reviewed' cases keep `edited_spec`
+-- (the reviewer's edit) if present, else the freshly generated content.
+CREATE TABLE IF NOT EXISTS case_reviews (
+    key         TEXT PRIMARY KEY,
+    status      TEXT NOT NULL,          -- reviewed | rejected
+    edited_spec TEXT,                   -- JSON TestCase, only if the reviewer changed something
+    updated_at  TEXT NOT NULL
+);

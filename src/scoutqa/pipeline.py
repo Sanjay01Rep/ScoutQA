@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
+import asyncio
 import json
+from collections import Counter
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any, Literal
@@ -23,6 +25,7 @@ from scoutqa.export.report import build_report
 from scoutqa.export.text_formats import export_csv, export_json, export_markdown
 from scoutqa.generate.cases import TestCase
 from scoutqa.generate.engine import generate_rule_cases
+from scoutqa.generate.llm_pipeline import DryRunEstimate, estimate_llm_generation, generate_llm_cases
 from scoutqa.log import get_logger
 from scoutqa.template.loader import load_template
 from scoutqa.template.spec import TemplateSpec
@@ -137,28 +140,106 @@ class GenerateReport(BaseModel):
     by_priority: dict[str, int]
     by_rule: dict[str, int]
     needs_review: int
-    tokens_used: int = 0
+    rule_cases: int
+    llm_cases: int
+    llm_calls: int = 0
+    llm_cached_calls: int = 0
 
 
-def generate(cfg: ProjectConfig, *, rules_only: bool = True, workspace: Workspace | None = None) -> GenerateReport:
-    """Generate test cases from the app model. Milestone 3: rule packs only (zero tokens)."""
+def _tally(cases: list[TestCase]) -> tuple[dict[str, int], dict[str, int], dict[str, int], dict[str, int]]:
+    by_module: Counter[str] = Counter()
+    by_type: Counter[str] = Counter()
+    by_priority: Counter[str] = Counter()
+    by_rule: Counter[str] = Counter()
+    for c in cases:
+        by_module[c.module] += 1
+        by_type[c.type.value] += 1
+        by_priority[c.priority.value] += 1
+        by_rule[c.source.generator] += 1
+    return dict(by_module), dict(by_type), dict(by_priority), dict(by_rule)
+
+
+def generate(
+    cfg: ProjectConfig, *, rules_only: bool | None = None, workspace: Workspace | None = None,
+) -> GenerateReport:
+    """Generate test cases from the app model: rule packs (zero tokens), plus — unless `rules_only` is True,
+    or False and `cfg.generation.use_llm`/`rules_only=False` ask for it — LLM scenario + expansion generation.
+    `rules_only=None` follows `cfg.generation.use_llm`; `True`/`False` always force the LLM stage off/on.
+    """
+    use_llm = cfg.generation.use_llm if rules_only is None else (not rules_only)
+    ws = workspace or workspace_for(cfg.project)
+    model = open_model(ws)
+    llm_calls = llm_cached_calls = 0
+    try:
+        if not model.roles():
+            raise ScoutQAError("The app model is empty. Run `scoutqa crawl` first.")
+        rule_result = generate_rule_cases(model, cfg)
+        model.replace_cases("rule", rule_result.cases)
+        if use_llm:
+            if not cfg.llm.profiles:
+                raise ScoutQAError("generation.use_llm is on but no llm.profiles are configured in scoutqa.yaml.")
+            prior_llm = model.cases(origin="llm", include_rejected=True)
+            from scoutqa.llm.router import ModelRouter
+
+            async def _run_llm_stage() -> Any:
+                router = ModelRouter(cfg.llm, model)
+                try:
+                    return await generate_llm_cases(model, cfg, router,
+                                                    existing_cases=rule_result.cases + prior_llm)
+                finally:
+                    await router.aclose()
+
+            llm_result = asyncio.run(_run_llm_stage())
+            model.replace_cases("llm", prior_llm + llm_result.cases)
+            llm_calls, llm_cached_calls = llm_result.calls, llm_result.cached_calls
+            log.info("LLM stage: %d new case(s) (%d scenario(s) skipped as duplicate, %d case(s) skipped as "
+                     "duplicate) in %d call(s) (%d cached)", len(llm_result.cases),
+                     llm_result.scenarios_skipped_duplicate, llm_result.cases_skipped_duplicate, llm_calls,
+                     llm_cached_calls)
+        final_cases = model.cases()
+    finally:
+        model.close()
+    path = ws.root / "cases.json"
+    path.write_text(json.dumps([c.model_dump(mode="json") for c in final_cases], indent=2, ensure_ascii=False),
+                    encoding="utf-8")
+    by_module, by_type, by_priority, by_rule = _tally(final_cases)
+    needs_review = sum(1 for c in final_cases if c.needs_review)
+    log.info("Generated %d case(s) total (%d need review) -> %s", len(final_cases), needs_review, path)
+    return GenerateReport(
+        cases=final_cases, cases_path=path, by_module=by_module, by_type=by_type, by_priority=by_priority,
+        by_rule=by_rule, needs_review=needs_review, rule_cases=sum(1 for c in final_cases if c.source.origin == "rule"),
+        llm_cases=sum(1 for c in final_cases if c.source.origin == "llm"), llm_calls=llm_calls,
+        llm_cached_calls=llm_cached_calls,
+    )
+
+
+class EstimateReport(BaseModel):
+    estimate: DryRunEstimate
+    by_module: dict[str, int]
+
+
+def estimate_generation(cfg: ProjectConfig, *, workspace: Workspace | None = None) -> EstimateReport:
+    """What `scoutqa generate --no-rules-only` (or a config with `generation.use_llm: true`) would cost, with
+    no network call and nothing written (`scoutqa generate --dry-run`)."""
+    if not cfg.llm.profiles:
+        raise ScoutQAError("No llm.profiles configured in scoutqa.yaml.")
     ws = workspace or workspace_for(cfg.project)
     model = open_model(ws)
     try:
         if not model.roles():
             raise ScoutQAError("The app model is empty. Run `scoutqa crawl` first.")
-        result = generate_rule_cases(model, cfg)
-        model.replace_cases("rule", result.cases)
+        from scoutqa.llm.router import ModelRouter
+
+        rule_result = generate_rule_cases(model, cfg)
+        prior_llm = model.cases(origin="llm", include_rejected=True)
+        router = ModelRouter(cfg.llm, model)
+        estimate = asyncio.run(
+            estimate_llm_generation(model, cfg, router, existing_cases=rule_result.cases + prior_llm)
+        )
     finally:
         model.close()
-    path = ws.root / "cases.json"
-    path.write_text(json.dumps([c.model_dump(mode="json") for c in result.cases], indent=2, ensure_ascii=False),
-                    encoding="utf-8")
-    log.info("Generated %d rule-based cases (%d need review) -> %s", len(result.cases), result.needs_review, path)
-    return GenerateReport(
-        cases=result.cases, cases_path=path, by_module=dict(result.by_module), by_type=dict(result.by_type),
-        by_priority=dict(result.by_priority), by_rule=dict(result.by_rule), needs_review=result.needs_review,
-    )
+    by_module = {str(row["module"]): int(row["approx_input_tokens"]) for row in estimate.calls}
+    return EstimateReport(estimate=estimate, by_module=by_module)
 
 
 ExportFormat = Literal["xlsx", "csv", "md", "json"]

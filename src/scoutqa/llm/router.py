@@ -125,7 +125,8 @@ class ModelRouter:
         profile_name = self._route(stage)
         profile = self.cfg.profiles[profile_name]
         schema = portable_schema(output)
-        key = cache_key(profile.provider, profile.model, stage, messages, schema)
+        key = cache_key(profile.provider, profile.model, stage, messages, schema,
+                        temperature=profile.temperature, max_output_tokens=profile.max_output_tokens)
 
         if self.cfg.cache and (hit := self.model.cache_get(key)) is not None:
             text, usage_dict = hit

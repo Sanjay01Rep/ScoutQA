@@ -60,7 +60,13 @@ def _inline_refs(node: Any, defs: dict[str, Any], seen: frozenset[str], depth: i
 
 def _tighten(node: Any) -> Any:
     if isinstance(node, dict):
-        out = {k: _tighten(v) for k, v in node.items() if k not in _STRIP_KEYS}
+        # `properties` keys are field *names* (e.g. a field literally called "title"), never schema
+        # metadata — only recurse into their values; `_STRIP_KEYS` only strips metadata keywords that
+        # appear as siblings of "type"/"properties" on an actual schema node, not as a property name.
+        properties = node.get("properties")
+        out = {k: _tighten(v) for k, v in node.items() if k not in _STRIP_KEYS and k != "properties"}
+        if isinstance(properties, dict):
+            out["properties"] = {name: _tighten(prop) for name, prop in properties.items()}
         if out.get("type") == "object" or "properties" in out:
             out["type"] = "object"
             props = out.get("properties", {})

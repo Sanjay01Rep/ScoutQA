@@ -95,7 +95,7 @@ def build_app_view(model: AppModel, cfg: ProjectConfig) -> AppView:
                     bucket = facts.blocked_by_page.setdefault(page_url, [])
                     if trigger not in bucket:
                         bucket.append(trigger)
-    return AppView(facts=facts, views=views)
+    return AppView(facts=facts, views=views, model=model)
 
 
 def _merge(into: dict[str, TestCase], cases: list[TestCase]) -> None:
