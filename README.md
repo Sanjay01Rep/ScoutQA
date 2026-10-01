@@ -147,18 +147,19 @@ one tool call open. `generate_test_cases`/`export` return counts and a file path
 content, since the client's tokens count too. `configure_model`/`set_template` only validate and return a
 YAML snippet to paste in yourself; nothing writes to `scoutqa.yaml` on your behalf.
 
-## Web UI (in progress)
+## Web UI
 
-A browser-based UI is being built as a fourth interface (alongside CLI/MCP/the extension's local
-service), so a non-CLI user can run the whole workflow from a browser. The backend API is up:
+A browser-based UI — a fourth interface alongside CLI/MCP/the extension's local service — so a non-CLI
+user can run the whole workflow from a browser: project setup, model/template config, login, crawl (with
+live progress), generate, review, export, and a usage/cost dashboard.
 
 ```powershell
 pip install scoutqa[ui]
 scoutqa ui --config scoutqa.yaml   # prints http://127.0.0.1:8766/?token=...
 ```
 
-Same local-only, token-protected posture as `scoutqa serve`/`scoutqa mcp`. The frontend itself isn't built
-yet — see `docs/ARCHITECTURE.md` §8 for the planned milestones.
+Same local-only, token-protected posture as `scoutqa serve`/`scoutqa mcp`. See `docs/ARCHITECTURE.md` §8
+for the design and `frontend/README.md` if you want to change the frontend itself.
 
 ## Safety
 

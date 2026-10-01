@@ -9,6 +9,7 @@ import { ModelsPage } from './pages/ModelsPage'
 import { ReviewPage } from './pages/ReviewPage'
 import { SetupPage } from './pages/SetupPage'
 import { TemplatePage } from './pages/TemplatePage'
+import { UsagePage } from './pages/UsagePage'
 
 const TABS = [
   { key: 'dashboard', label: 'Dashboard', render: () => <Dashboard /> },
@@ -20,6 +21,7 @@ const TABS = [
   { key: 'generate', label: 'Generate', render: () => <GeneratePage /> },
   { key: 'review', label: 'Review', render: () => <ReviewPage /> },
   { key: 'export', label: 'Export', render: () => <ExportPage /> },
+  { key: 'usage', label: 'Usage', render: () => <UsagePage /> },
 ] as const
 
 type TabKey = (typeof TABS)[number]['key']

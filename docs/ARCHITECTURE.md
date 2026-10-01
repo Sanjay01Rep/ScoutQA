@@ -474,9 +474,10 @@ typing commands. Same local-only posture as `scoutqa serve`/`scoutqa mcp`.
   `crawl_start` runs as a background job (`scoutqa.jobs.JobManager`, shared with the MCP server's
   `crawl_app`/`get_run_status`) with progress pushed live over Server-Sent Events
   (`GET /api/jobs/{id}/events`) rather than polled, since a human is watching a progress bar in real time.
-- **Frontend** (top-level `frontend/`, not yet built): React + TypeScript, built with Vite. The build
-  *output* ships inside the Python package (`src/scoutqa/webui/static/`) so installing `scoutqa[ui]` never
-  requires Node — only development does.
+- **Frontend** (top-level `frontend/`): React + TypeScript, built with Vite — Dashboard, Setup, Models,
+  Template, Login, Crawl, Generate, Review, Export, Usage. The build *output* ships inside the Python
+  package (`src/scoutqa/webui/static/`) so installing `scoutqa[ui]` never requires Node — only
+  development does.
 
 | # | Milestone | Done when |
 |---|---|---|
@@ -484,4 +485,4 @@ typing commands. Same local-only posture as `scoutqa serve`/`scoutqa mcp`.
 | UI-2 ✅ | **Core workflow UI** (React + TypeScript via Vite, `frontend/`): Dashboard, Login, Crawl (live progress via `EventSource`), Generate (incl. dry-run estimate), Review queue, Export + download | Verified in a real browser against a real backend: dashboard stats, approve/reject, dry-run estimate, a real local crawl with live SSE progress to completion, export + download |
 | UI-3 ✅ | **Project setup in the UI**: edit `scoutqa.yaml` through a form (base URL, auth, scope, template path) | Verified live: edit-and-save, and recovering a deleted config file, both through a real browser |
 | UI-4 ✅ | **Model & template config screens**: validate + preview (M9's `configure_model`/`set_template`), then **save to scoutqa.yaml** via UI-3's `/api/config` — a human clicking Save here isn't the same risk as an autonomous MCP agent, so this isn't preview-only | Verified live: added and saved a `fake` model profile, confirmed on disk; previewed the default template |
-| UI-5 | **Usage/cost dashboard** | — |
+| UI-5 ✅ | **Usage/cost dashboard**: totals, a per-stage token bar chart, and the full stage/provider/model breakdown table | Verified live against real usage data (three stages, mixed providers) through a real browser |
