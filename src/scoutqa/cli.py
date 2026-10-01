@@ -312,6 +312,38 @@ def mcp(
 
 
 @app.command()
+def ui(
+    config: ConfigOpt = Path(DEFAULT_CONFIG_NAME),
+    port: Annotated[int, typer.Option(help="Port on 127.0.0.1")] = 8766,
+    verbose: VerboseOpt = False,
+) -> None:
+    """Run the browser-based UI for this project (needs: pip install scoutqa[ui])."""
+    setup_logging(verbose)
+    try:
+        cfg = load_config(config)
+    except ScoutQAError as exc:
+        raise _fail(exc) from None
+    try:
+        import uvicorn
+
+        from scoutqa.webui.server import build_app
+    except ImportError:
+        console.print("[red]Error:[/red] the web UI needs an extra: pip install scoutqa[ui]")
+        raise typer.Exit(code=1) from None
+    app_ = build_app(cfg, port=port)
+    console.print(f"ScoutQA UI for [bold]{cfg.project}[/bold]: "
+                  f"http://127.0.0.1:{port}/?token={app_.state.token} (this computer only)")
+    console.print("Press Ctrl+C to stop.")
+    try:
+        asyncio.run(uvicorn.Server(uvicorn.Config(app_, host="127.0.0.1", port=port, log_level="warning")).serve())
+    except KeyboardInterrupt:
+        console.print("Stopped.")
+    except OSError as exc:
+        console.print(f"[red]Error:[/red] cannot listen on 127.0.0.1:{port} ({exc}). Try --port.")
+        raise typer.Exit(code=1) from None
+
+
+@app.command()
 def extension() -> None:
     """Show where the browser extension is and how to install it."""
     from scoutqa.distill.extract import extension_dir

@@ -20,7 +20,7 @@ from scoutqa.appmodel.repo import AppModel
 from scoutqa.config.models import ModelProfile, ProjectConfig
 from scoutqa.errors import ScoutQAError
 from scoutqa.generate.cases import TestCase
-from scoutqa.mcp.jobs import Job, JobManager, JobProgress, JobStatus
+from scoutqa.jobs import Job, JobManager
 from scoutqa.workspace import Workspace
 
 _F = TypeVar("_F", bound=Callable[..., Any])
@@ -100,10 +100,7 @@ async def crawl_app(ctx: ToolContext, role: str | None = None, max_pages: int | 
     cfg = _scoped_config(ctx.cfg, max_pages, max_depth)
 
     async def _run(job: Job[Any]) -> dict[str, Any]:
-        def on_progress(pages_done: int, frontier_size: int, current_url: str) -> None:
-            job.progress = JobProgress(pages_done, frontier_size, current_url)
-
-        report = await pipeline.crawl(cfg, role=role, workspace=ctx.ws, on_progress=on_progress)
+        report = await pipeline.crawl(cfg, role=role, workspace=ctx.ws, on_progress=job.update_progress)
         return {"run_id": report.result.run_id, "role": report.result.role,
                 "stopped_reason": report.result.stopped_reason, "stats": report.result.stats(),
                 "states": report.deltas}
@@ -117,17 +114,7 @@ def get_run_status(ctx: ToolContext, job_id: str) -> dict[str, Any]:
     job = ctx.jobs.get(job_id)
     if job is None:
         raise ScoutQAError(f"no such job: {job_id!r}")
-    out: dict[str, Any] = {
-        "job_id": job.id, "kind": job.kind, "status": job.status.value,
-        "progress": {"pages_done": job.progress.pages_done, "frontier_size": job.progress.frontier_size,
-                    "current_url": job.progress.current_url},
-        "started_at": job.started_at, "finished_at": job.finished_at,
-    }
-    if job.status is JobStatus.COMPLETED:
-        out["result"] = job.result
-    elif job.status is JobStatus.FAILED:
-        out["error"] = job.error
-    return out
+    return job.snapshot()
 
 
 # ---------------------------------------------------------------- app map

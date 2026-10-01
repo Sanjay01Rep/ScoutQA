@@ -408,7 +408,7 @@ dev: pytest, pytest-asyncio, ruff, mypy.
 
 ```
 ScoutQA/
-├── pyproject.toml            # src layout, extras: [anthropic, openai, gemini, mcp, all, dev]
+├── pyproject.toml            # src layout, extras: [anthropic, openai, gemini, mcp, ui, all, dev]
 ├── README.md
 ├── scoutqa.example.yaml
 ├── docs/ARCHITECTURE.md
@@ -426,10 +426,13 @@ ScoutQA/
 │   ├── template/      loader.py · mapping.py · default.py
 │   ├── export/        excel.py · csv.py · markdown.py · jsonx.py · report.py
 │   ├── service/       app.py · pairing.py  # local HTTP service for the extension (M5)
-│   ├── mcp/           server.py · tools.py · jobs.py  # stdio MCP server (M9), extra [mcp]
-│   ├── pipeline.py    # library API used by CLI, MCP and the local service
+│   ├── mcp/           server.py · tools.py  # stdio MCP server (M9), extra [mcp]
+│   ├── webui/         server.py · routes.py · context.py · static/  # web UI backend (UI-1), extra [ui]
+│   ├── jobs.py        # shared background-job registry (MCP + web UI)
+│   ├── pipeline.py    # library API used by CLI, MCP, the web UI and the local service
 │   └── cli.py
 ├── extension/         # MV3 extension (TypeScript): manifest, side panel, content script, worker (M5–M6)
+├── frontend/          # React + TypeScript web UI source (not yet built); output ships in webui/static/
 └── tests/
     ├── fixture_app/   # local web app: login, SPA routes, modal, iframe, lazy list, template pages,
     │                  # Delete/Pay buttons, logout, mutating API — and a request log for safety asserts
@@ -455,3 +458,30 @@ ScoutQA/
 
 The deterministic pipeline (M1–M4) is proven end-to-end before any tokens are spent, and the extension
 (M5–M6) plugs into a pipeline that already produces output.
+
+---
+
+## 8. Web UI (new, post-Phase-1)
+
+A fourth interface over `scoutqa.pipeline` (alongside the CLI, MCP, and the extension's local service): a
+browser UI so a non-CLI user can run the whole workflow — login, crawl, generate, review, export — without
+typing commands. Same local-only posture as `scoutqa serve`/`scoutqa mcp`.
+
+- **Backend** (`src/scoutqa/webui/`, extra `[ui]`): Starlette + uvicorn, one server process per project
+  (`scoutqa ui --config scoutqa.yaml`), bound to `127.0.0.1` only. Every `/api/*` route except
+  `/api/health` needs a token — generated at startup and printed in the URL, the same defense-in-depth
+  the extension's pairing token gives `scoutqa serve`, plus Host-header pinning against DNS rebinding.
+  `crawl_start` runs as a background job (`scoutqa.jobs.JobManager`, shared with the MCP server's
+  `crawl_app`/`get_run_status`) with progress pushed live over Server-Sent Events
+  (`GET /api/jobs/{id}/events`) rather than polled, since a human is watching a progress bar in real time.
+- **Frontend** (top-level `frontend/`, not yet built): React + TypeScript, built with Vite. The build
+  *output* ships inside the Python package (`src/scoutqa/webui/static/`) so installing `scoutqa[ui]` never
+  requires Node — only development does.
+
+| # | Milestone | Done when |
+|---|---|---|
+| UI-1 ✅ | **Backend API skeleton** (project/login/crawl-as-a-job/map/generate/review/export/models/usage routes, token + Host-pinning middleware) | Starlette `TestClient` tests for every route (22 tests) + a real `scoutqa ui` subprocess smoke test over actual HTTP |
+| UI-2 | **Core workflow UI** (login, crawl with live progress, generate, review queue, export) | — |
+| UI-3 | **Project setup in the UI** (create/edit `scoutqa.yaml` through forms) | — |
+| UI-4 | **Model & template config screens** (in-browser `configure_model`/`set_template`) | — |
+| UI-5 | **Usage/cost dashboard** | — |
