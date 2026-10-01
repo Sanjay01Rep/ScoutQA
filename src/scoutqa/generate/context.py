@@ -108,8 +108,7 @@ class PageContext:
     @property
     def page_name(self) -> str:
         spec = (self.base or self.state).spec
-        h1 = next((h.split(" ", 1)[1] for h in spec.headings if h.startswith("h1 ") and " " in h), "")
-        name = h1 or spec.title or self.pattern
+        name = spec.best_heading() or spec.title or self.pattern
         if self.instances > 1:
             name = re.sub(r"\d+", "{n}", name)
         return _PLACEHOLDER.sub("<n>", name)

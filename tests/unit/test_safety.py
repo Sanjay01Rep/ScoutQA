@@ -31,6 +31,10 @@ from scoutqa.crawl.safety import (
         (ActionInfo(text="Items", href="/items"), Risk.NAVIGATIONAL),
         (ActionInfo(text="Dropdown", href="/menu-demo"), Risk.DISCLOSURE),  # "menu", not "drop"
         (ActionInfo(text="x", tag="button", element_id="btnDeleteUser"), Risk.DESTRUCTIVE),
+        # A bare "Reset" is almost always a filter/form-clear button (real example: OrangeHRM's search
+        # forms), not destructive — only a qualified phrase like "Reset password" genuinely is.
+        (ActionInfo(text="Reset", tag="button"), Risk.UNKNOWN),
+        (ActionInfo(text="Reset password", tag="button"), Risk.DESTRUCTIVE),
     ],
 )
 def test_classify_action(action: ActionInfo, risk: Risk) -> None:

@@ -18,7 +18,7 @@ from urllib.parse import urlsplit
 from scoutqa.crawl.safety import ActionInfo, Risk, classify_action, may_click, may_follow_link
 from scoutqa.crawl.scope import normalize_url, url_pattern
 from scoutqa.distill.fingerprint import content_hash, structure_hash
-from scoutqa.distill.raw import RawControl, RawField, RawLink, RawSnapshot
+from scoutqa.distill.raw import RawControl, RawField, RawHeading, RawLink, RawSnapshot
 from scoutqa.distill.redact import redact_text
 from scoutqa.distill.spec import (
     ActionSpec,
@@ -35,6 +35,18 @@ from scoutqa.distill.spec import (
 MAX_HEADINGS = 12
 MAX_MESSAGES = 5
 _DIGITS = re.compile(r"\d+")
+
+
+def _page_headings(raw_headings: list[RawHeading]) -> list[str]:
+    """Headings in the page's main content, formatted as 'h<level> <text>'. Some single-page apps (real
+    example: OrangeHRM) render the page's own title as a breadcrumb inside a persistent `<header>` rather
+    than anywhere in the main content — with nothing in 'main', fall back to that header's own last
+    (most specific) heading, so a page like this doesn't end up with no title at all."""
+    main = [f"h{h.level} {redact_text(h.text)}" for h in raw_headings if h.region == "main"]
+    if main:
+        return main[:MAX_HEADINGS]
+    chrome = [h for h in raw_headings if h.region == "chrome"]
+    return [f"h{chrome[-1].level} {redact_text(chrome[-1].text)}"] if chrome else []
 
 
 @dataclass(frozen=True)
@@ -240,8 +252,7 @@ class _Builder:
             url_pattern=_target(raw.url, self.page_host),
             title=redact_text(raw.title),
             layout_id=layout.id if layout else None,
-            headings=[f"h{h.level} {redact_text(h.text)}" for h in raw.headings
-                      if h.region == "main"][:MAX_HEADINGS],  # dialog headings name the dialog instead
+            headings=_page_headings(raw.headings),
             forms=[f for f in forms.values() if f.ref not in dialog_form_refs],
             fields=loose_fields,
             actions=_collapse_actions(main_controls, prefix, in_frame),

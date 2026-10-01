@@ -9,6 +9,7 @@ from collections import Counter, defaultdict
 from dataclasses import dataclass, field
 
 from scoutqa.appmodel.repo import AppModel
+from scoutqa.distill.spec import PageSpec
 from scoutqa.generate.cases import TestCase
 
 COVERAGE_HEADERS = ["Module", "Page", "URL pattern", "Roles", "Similar pages", "In-page states", "Forms",
@@ -45,9 +46,8 @@ class _Page:
     instances: int = 1
 
 
-def _page_name(spec_headings: list[str], title: str, pattern: str) -> str:
-    h1 = next((h.split(" ", 1)[1] for h in spec_headings if h.startswith("h1 ") and " " in h), "")
-    return h1 or title or pattern
+def _page_name(spec: PageSpec, pattern: str) -> str:
+    return spec.best_heading() or spec.title or pattern
 
 
 def build_report(model: AppModel, cases: list[TestCase]) -> Report:
@@ -68,7 +68,7 @@ def build_report(model: AppModel, cases: list[TestCase]) -> Report:
             else:
                 page.roles.add(role)
                 page.instances = max(page.instances, groups.get(s.id, 1))
-                page.name = page.name or _page_name(s.spec.headings, s.title, s.url_pattern)
+                page.name = page.name or _page_name(s.spec, s.url_pattern)
             forms = [*s.spec.forms, *(f for d in s.spec.dialogs for f in d.forms)]
             page.forms = max(page.forms, len(forms))
             page.fields |= {(s.id, fld.ref, fld.label) for f in forms for fld in f.fields}

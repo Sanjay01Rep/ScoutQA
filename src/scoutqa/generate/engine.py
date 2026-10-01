@@ -63,8 +63,7 @@ def _observation(row: sqlite3.Row) -> ApiObservation:
 
 
 def _page_title(state: StateRow) -> str:
-    h1 = next((h.split(" ", 1)[1] for h in state.spec.headings if h.startswith("h1 ") and " " in h), "")
-    return h1 or state.spec.title or state.url_pattern
+    return state.spec.best_heading() or state.spec.title or state.url_pattern
 
 
 def build_app_view(model: AppModel, cfg: ProjectConfig) -> AppView:

@@ -54,6 +54,23 @@ def test_layout_is_split_out() -> None:
     assert d.spec.headings == ["h1 Item 7"]
 
 
+def test_heading_falls_back_to_the_header_chromes_last_heading_when_main_has_none() -> None:
+    # Real example: OrangeHRM (a Vue SPA) renders its page title only as a two-level breadcrumb inside a
+    # persistent <header> — "Admin" then "User Management" — with no heading anywhere in main content.
+    d = distill(snapshot(headings=[
+        {"level": 6, "text": "Admin", "region": "chrome"},
+        {"level": 6, "text": "User Management", "region": "chrome"},
+    ]))
+    assert d.spec.headings == ["h6 User Management"]  # the last (most specific) chrome heading
+    assert d.spec.best_heading() == "User Management"
+
+
+def test_main_headings_are_always_preferred_over_chrome() -> None:
+    d = distill(snapshot())  # snapshot()'s default headings already have one in 'main'
+    assert d.spec.headings == ["h1 Item 7"]  # the chrome-only "Nav" heading never appears
+    assert d.spec.best_heading() == "Item 7"
+
+
 def test_repeated_links_collapse_and_hidden_links_are_crawl_only() -> None:
     d = distill(snapshot())
     item = next(link for link in d.spec.links if link.target == "/items/{id}")

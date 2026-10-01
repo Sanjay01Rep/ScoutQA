@@ -105,6 +105,15 @@ class PageSpec(_Spec):
     pagination: bool = False
     frames: list[str] = Field(default_factory=list)
 
+    def best_heading(self) -> str:
+        """A real `<h1>` if the page has one; otherwise the first heading at any level — a page whose
+        only "title" is, say, an `<h6>` (or the header-chrome fallback `headings` can hold, see
+        `distill/build.py`) still beats falling all the way back to the generic document title."""
+        h1 = next((h.split(" ", 1)[1] for h in self.headings if h.startswith("h1 ") and " " in h), "")
+        if h1:
+            return h1
+        return next((h.split(" ", 1)[1] for h in self.headings if " " in h), "")
+
 
 class ElementRecord(BaseModel):
     """Every addressable element of a state, with locator candidates (for replay and Phase 2)."""

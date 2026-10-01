@@ -38,8 +38,9 @@ _KEYWORDS: dict[Risk, tuple[str, ...]] = {
     ),
     Risk.DESTRUCTIVE: (
         "delete", "remove", "destroy", "erase", "purge", "wipe", "drop", "terminate", "deactivate",
-        "disable account", "close account", "revoke", "reset", "clear all", "unsubscribe",
-        "cancel subscription", "cancel order", "archive", "trash", "discard",
+        "disable account", "close account", "revoke", "reset password", "reset account", "factory reset",
+        "reset all", "clear all", "unsubscribe", "cancel subscription", "cancel order", "archive", "trash",
+        "discard",
     ),
     Risk.TRANSACTIONAL: (
         "pay", "payment", "purchase", "buy", "checkout", "check out", "place order", "confirm order",
