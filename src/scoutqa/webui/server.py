@@ -19,6 +19,7 @@ from starlette.responses import JSONResponse, Response
 from starlette.routing import Mount, Route
 from starlette.staticfiles import StaticFiles
 
+from scoutqa.config.loader import DEFAULT_CONFIG_NAME
 from scoutqa.config.models import ProjectConfig
 from scoutqa.errors import ScoutQAError
 from scoutqa.webui import routes as r
@@ -56,6 +57,8 @@ async def _handle_scoutqa_error(request: Request, exc: Exception) -> Response:
 _ROUTES = [
     Route("/api/health", r.health),
     Route("/api/project", r.project_info),
+    Route("/api/config", r.get_config),
+    Route("/api/config", r.save_config, methods=["POST"]),
     Route("/api/login", r.login, methods=["POST"]),
     Route("/api/crawl", r.crawl_start, methods=["POST"]),
     Route("/api/jobs/{job_id}", r.job_status),
@@ -74,7 +77,8 @@ _ROUTES = [
 ]
 
 
-def build_app(cfg: ProjectConfig, ws: Workspace | None = None, *, port: int, token: str | None = None) -> Starlette:
+def build_app(cfg: ProjectConfig, ws: Workspace | None = None, *, port: int, token: str | None = None,
+             config_path: Path | None = None) -> Starlette:
     token = token or secrets.token_urlsafe(24)
     routes: list[Route | Mount] = list(_ROUTES)
     if _STATIC_DIR.is_dir():
@@ -83,6 +87,7 @@ def build_app(cfg: ProjectConfig, ws: Workspace | None = None, *, port: int, tok
         routes=routes, middleware=[Middleware(_SecurityMiddleware, port=port, token=token)],
         exception_handlers={ScoutQAError: _handle_scoutqa_error},
     )
-    app.state.ui_ctx = UIContext(cfg, ws or workspace_for(cfg.project))
+    path = config_path or (Path.cwd() / DEFAULT_CONFIG_NAME)
+    app.state.ui_ctx = UIContext(cfg, ws or workspace_for(cfg.project), path)
     app.state.token = token
     return app

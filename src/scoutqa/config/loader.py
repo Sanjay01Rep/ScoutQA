@@ -27,7 +27,7 @@ def load_config(path: str | Path | None = None, overrides: dict[str, Any] | None
         raise ConfigError(f"{cfg_path}: top level must be a mapping")
     for dotted, value in (overrides or {}).items():
         if value is not None:
-            _set_dotted(data, dotted, value)
+            set_dotted(data, dotted, value)
     return parse_config(data, source=str(cfg_path))
 
 
@@ -42,7 +42,9 @@ def parse_config(data: dict[str, Any], source: str = "<config>") -> ProjectConfi
         raise ConfigError("\n".join(lines)) from None
 
 
-def _set_dotted(data: dict[str, Any], dotted: str, value: Any) -> None:
+def set_dotted(data: dict[str, Any], dotted: str, value: Any) -> None:
+    """Set `data`'s nested `dotted` key (e.g. "scope.max_pages") to `value`, creating intermediate
+    mappings as needed. Shared by `load_config`'s CLI-style overrides and the web UI's config editor."""
     node = data
     *parents, leaf = dotted.split(".")
     for key in parents:

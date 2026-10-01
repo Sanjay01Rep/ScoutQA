@@ -174,3 +174,42 @@ export interface UsageReport {
 export interface ApiErrorBody {
   error: string
 }
+
+// ---------------------------------------------------------------- project setup (config file)
+
+export interface AuthConfigView {
+  type: string
+  login_url: string | null
+  username_env: string | null
+  password_env: string | null
+}
+
+export interface ScopeConfigView {
+  max_pages: number
+  max_depth: number
+}
+
+export interface TemplateConfigView {
+  path: string | null
+}
+
+export interface ConfigView {
+  project: string
+  base_url: string
+  auth: AuthConfigView
+  scope: ScopeConfigView
+  template: TemplateConfigView
+}
+
+export interface GetConfigResult {
+  exists: boolean
+  path: string
+  config: ConfigView | null
+}
+
+export interface SaveConfigResult {
+  path: string
+  project: string
+  base_url: string
+  note: string
+}

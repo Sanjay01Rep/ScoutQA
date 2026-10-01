@@ -482,6 +482,6 @@ typing commands. Same local-only posture as `scoutqa serve`/`scoutqa mcp`.
 |---|---|---|
 | UI-1 ✅ | **Backend API skeleton** (project/login/crawl-as-a-job/map/generate/review/export/models/usage routes, token + Host-pinning middleware) | Starlette `TestClient` tests for every route (22 tests) + a real `scoutqa ui` subprocess smoke test over actual HTTP |
 | UI-2 ✅ | **Core workflow UI** (React + TypeScript via Vite, `frontend/`): Dashboard, Login, Crawl (live progress via `EventSource`), Generate (incl. dry-run estimate), Review queue, Export + download | Verified in a real browser against a real backend: dashboard stats, approve/reject, dry-run estimate, a real local crawl with live SSE progress to completion, export + download |
-| UI-3 | **Project setup in the UI** (create/edit `scoutqa.yaml` through forms) | — |
+| UI-3 ✅ | **Project setup in the UI**: edit `scoutqa.yaml` through a form (base URL, auth, scope, template path) | Verified live: edit-and-save, and recovering a deleted config file, both through a real browser |
 | UI-4 | **Model & template config screens** (in-browser `configure_model`/`set_template`) | — |
 | UI-5 | **Usage/cost dashboard** | — |

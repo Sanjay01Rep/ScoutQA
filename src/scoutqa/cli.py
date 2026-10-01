@@ -330,7 +330,7 @@ def ui(
     except ImportError:
         console.print("[red]Error:[/red] the web UI needs an extra: pip install scoutqa[ui]")
         raise typer.Exit(code=1) from None
-    app_ = build_app(cfg, port=port)
+    app_ = build_app(cfg, port=port, config_path=config.resolve())
     console.print(f"ScoutQA UI for [bold]{cfg.project}[/bold]: "
                   f"http://127.0.0.1:{port}/?token={app_.state.token} (this computer only)")
     console.print("Press Ctrl+C to stop.")

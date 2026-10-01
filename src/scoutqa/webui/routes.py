@@ -12,6 +12,7 @@ import os
 from pathlib import Path
 from typing import Any, Literal
 
+import yaml
 from pydantic import ValidationError
 from sse_starlette import EventSourceResponse
 from starlette.requests import Request
@@ -19,6 +20,8 @@ from starlette.responses import FileResponse, JSONResponse, Response
 
 from scoutqa import pipeline
 from scoutqa.appmodel.repo import AppModel
+from scoutqa.config.example import example_yaml
+from scoutqa.config.loader import load_config, parse_config, set_dotted
 from scoutqa.config.models import ModelProfile, ProjectConfig
 from scoutqa.errors import ScoutQAError
 from scoutqa.generate.cases import TestCase
@@ -318,3 +321,45 @@ async def usage(request: Request) -> Response:
         "total_input_tokens": report.total_input_tokens, "total_output_tokens": report.total_output_tokens,
         "total_cost_usd": report.total_cost_usd, "cache_entries": report.cache_entries,
     })
+
+
+# ---------------------------------------------------------------- project setup (config file)
+# `scoutqa ui` needs a valid scoutqa.yaml to start at all (ctx.cfg/ctx.ws are built from it), so there is
+# no "create a brand new project" case here — only editing the one this server is already running with.
+# `ctx.config_path` is the file it actually loaded, which (unless `--config` pointed elsewhere) is the
+# same path `/api/config` reads/writes; `ctx.cfg.project` never changes without a restart either way, so
+# edits here can't silently point this running server at a different project's workspace.
+
+async def get_config(request: Request) -> Response:
+    ctx = _ctx(request)
+    path = ctx.config_path
+    if not path.is_file():
+        return JSONResponse({"exists": False, "path": str(path), "config": None})
+    cfg = load_config(path)
+    return JSONResponse({"exists": True, "path": str(path), "config": cfg.model_dump(mode="json")})
+
+
+async def save_config(request: Request) -> Response:
+    """Merge-and-rewrite `ctx.config_path`, recreating it (from the same template `scoutqa init` writes,
+    seeded with this server's own project/base_url) if it was deleted since the server started. Plain
+    `yaml.safe_dump`, not a comment-preserving round trip: hand-written comments are lost on first save.
+    `project` can't be changed here — this server's workspace is already fixed to the one it started
+    with, and the file's other settings only take effect for *this* server after a restart anyway."""
+    ctx = _ctx(request)
+    body = await _body(request)
+    fields = body.get("fields") or {}
+    if not isinstance(fields, dict):
+        raise ScoutQAError("'fields' must be an object of dotted-key -> value")
+    path = ctx.config_path
+    if path.is_file():
+        data = yaml.safe_load(path.read_text(encoding="utf-8")) or {}
+    else:
+        data = yaml.safe_load(example_yaml(ctx.cfg.project, ctx.cfg.base_url)) or {}
+    fields.pop("project", None)
+    for dotted, value in fields.items():
+        set_dotted(data, dotted, value)
+    data["project"] = ctx.cfg.project
+    cfg = parse_config(data, source=str(path))
+    path.write_text(yaml.safe_dump(data, sort_keys=False, allow_unicode=True), encoding="utf-8")
+    return JSONResponse({"path": str(path), "project": cfg.project, "base_url": cfg.base_url,
+                        "note": "Restart `scoutqa ui` for this to take effect on crawl/generate/export here."})

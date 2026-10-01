@@ -5,13 +5,16 @@ the CLI/MCP/extension-service layers each independently wrap `scoutqa.pipeline` 
 
 from __future__ import annotations
 
+from pathlib import Path
+
 from scoutqa.config.models import ProjectConfig
 from scoutqa.jobs import JobManager
 from scoutqa.workspace import Workspace
 
 
 class UIContext:
-    def __init__(self, cfg: ProjectConfig, ws: Workspace) -> None:
+    def __init__(self, cfg: ProjectConfig, ws: Workspace, config_path: Path) -> None:
         self.cfg = cfg
         self.ws = ws
+        self.config_path = config_path  # the file `cfg` was actually loaded from — /api/config edits this
         self.jobs = JobManager()

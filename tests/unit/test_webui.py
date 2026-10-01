@@ -314,3 +314,74 @@ def test_usage_empty_project() -> None:
     with webui_client(cfg) as (client, headers):
         r = client.get("/api/usage", headers=headers).json()
     assert r["rows"] == [] and r["total_cost_usd"] is None
+
+
+# ---------------------------------------------------------------- project setup (config file)
+# Every test here runs with cwd pointed at an isolated tmp_path, since /api/config reads/writes
+# scoutqa.yaml in the server's current directory.
+
+def test_get_config_when_no_file_exists(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.chdir(tmp_path)
+    with webui_client(_cfg()) as (client, headers):
+        r = client.get("/api/config", headers=headers).json()
+    assert r == {"exists": False, "path": str(tmp_path / "scoutqa.yaml"), "config": None}
+
+
+def test_project_cannot_be_changed_via_fields(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    # `ctx.ws`/`ctx.cfg` are already fixed to this server's own project — renaming it in the file alone
+    # would desync the workspace this same server reads/writes cases from until a restart.
+    monkeypatch.chdir(tmp_path)
+    with webui_client(_cfg()) as (client, headers):
+        r = client.post("/api/config", json={"fields": {"project": "somethingelse",
+                                                         "base_url": "https://x.io/"}}, headers=headers).json()
+    assert r["project"] == "webui1"
+
+
+def test_save_config_recreates_a_deleted_file_from_this_servers_own_identity(
+        tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.chdir(tmp_path)
+    assert not (tmp_path / "scoutqa.yaml").is_file()
+    with webui_client(_cfg()) as (client, headers):
+        created = client.post("/api/config", json={"fields": {"scope.max_pages": 30}}, headers=headers).json()
+        assert created["project"] == "webui1" and created["base_url"] == "https://x.io/"
+
+        fetched = client.get("/api/config", headers=headers).json()
+    assert fetched["exists"] is True
+    assert fetched["config"]["project"] == "webui1"
+    assert fetched["config"]["scope"]["max_pages"] == 30
+    text = (tmp_path / "scoutqa.yaml").read_text(encoding="utf-8")
+    assert "webui1" in text
+
+
+def test_update_existing_project_merges_fields_and_keeps_the_rest(tmp_path: Path,
+                                                                  monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.chdir(tmp_path)
+    with webui_client(_cfg()) as (client, headers):
+        client.post("/api/config", json={"fields": {"base_url": "https://demo.example.com/dashboard"}},
+                    headers=headers)
+
+        updated = client.post("/api/config", json={"fields": {
+            "auth.type": "form", "auth.login_url": "https://demo.example.com/login",
+            "auth.username_env": "DEMO_USER", "auth.password_env": "DEMO_PASS",
+            "scope.max_pages": 25,
+        }}, headers=headers).json()
+        assert updated["project"] == "webui1"  # untouched fields survive the merge
+
+        fetched = client.get("/api/config", headers=headers).json()["config"]
+    assert fetched["auth"]["type"] == "form" and fetched["auth"]["login_url"] == "https://demo.example.com/login"
+    assert fetched["scope"]["max_pages"] == 25
+    assert fetched["base_url"] == "https://demo.example.com/dashboard"  # set by the first call, kept by the second
+
+
+def test_save_config_rejects_an_invalid_value(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.chdir(tmp_path)
+    with webui_client(_cfg()) as (client, headers):
+        r = client.post("/api/config", json={"fields": {"auth.type": "not-a-real-type"}}, headers=headers)
+    assert r.status_code == 400
+
+
+def test_save_config_rejects_non_dict_fields(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.chdir(tmp_path)
+    with webui_client(_cfg()) as (client, headers):
+        r = client.post("/api/config", json={"fields": ["not", "a", "dict"]}, headers=headers)
+    assert r.status_code == 400

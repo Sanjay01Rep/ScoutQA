@@ -6,9 +6,11 @@ import { ExportPage } from './pages/ExportPage'
 import { GeneratePage } from './pages/GeneratePage'
 import { LoginPage } from './pages/LoginPage'
 import { ReviewPage } from './pages/ReviewPage'
+import { SetupPage } from './pages/SetupPage'
 
 const TABS = [
   { key: 'dashboard', label: 'Dashboard', render: () => <Dashboard /> },
+  { key: 'setup', label: 'Setup', render: () => <SetupPage /> },
   { key: 'login', label: 'Login', render: () => <LoginPage /> },
   { key: 'crawl', label: 'Crawl', render: () => <CrawlPage /> },
   { key: 'generate', label: 'Generate', render: () => <GeneratePage /> },
